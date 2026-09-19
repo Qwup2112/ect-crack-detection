@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Generated analysis output (reproducible by running the tools)
+*_results/
+sweep_all.csv
+sensor_compare.csv
+
+# TDMS index files are regenerated automatically by npTDMS from the .tdms files
+*.tdms_index
+
+# OS / editor
+Thumbs.db
+.DS_Store
+.vscode/
+.idea/
+
+# Never commit credentials. The app keeps the API key in session memory only,
+# but this guards against a stray local file.
+.env
+*.key
+secrets.*
