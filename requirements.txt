@@ -1,0 +1,9 @@
+# Analysis backend
+npTDMS>=1.9
+numpy>=1.24
+scipy>=1.10
+pandas>=2.0
+matplotlib>=3.7
+
+# AI assistant tab only - the analysis tools work without it
+anthropic>=1.0

@@ -8,10 +8,15 @@ The specimen is a calibration coupon with 15 artificial cracks in a 3 × 5 grid 
 varying depths. Scans vary by sensor channel (R = amplitude, P = phase), excitation
 amplitude, and frequency.
 
+## Requirements
+
+Python 3.9 or newer. On Linux the desktop app also needs Tk (`sudo apt install python3-tk`);
+on Windows and macOS it ships with Python. The command-line tools do not need Tk.
+
 ## Quick start
 
 ```bash
-pip install npTDMS numpy scipy matplotlib pandas anthropic
+pip install -r requirements.txt   # or: pip install npTDMS numpy scipy matplotlib pandas anthropic
 
 # One file -> the 6 standard views
 python tools/crack_heatmap/tdms_crack_scan.py report cambien_4lop_2/4lop_R_amp_1.3V_fre_200k_lf_1mm_145x95mm.tdms
