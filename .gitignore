@@ -18,6 +18,9 @@ results/*/
 !results/labels/
 results/*.pptx
 
+# App runtime state: generated images, long-term memory, logs (per machine)
+app/state/
+
 # TDMS index files are regenerated automatically by npTDMS from the .tdms files
 *.tdms_index
 

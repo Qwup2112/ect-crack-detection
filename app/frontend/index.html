@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ECT Crack Chat</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <main class="app">
+    <!-- LEFT: chat + replies -->
+    <section class="chat" aria-label="Trò chuyện">
+      <header class="bar">
+        <div class="brand"><span class="coil" aria-hidden="true"></span>ECT Crack Chat</div>
+        <div class="bar-right">
+          <span id="status" class="status" title="Trạng thái">●</span>
+          <button id="newChat" class="ghost" type="button">Cuộc chat mới</button>
+        </div>
+      </header>
+
+      <div id="messages" class="messages" aria-live="polite">
+        <div id="empty" class="empty">
+          <h1>Hỏi hoặc ra lệnh vẽ</h1>
+          <p>Ví dụ:</p>
+          <div class="suggestions">
+            <button type="button">Có những file quét nào?</button>
+            <button type="button">Vẽ bản đồ nhiệt file R 1.7V 300k</button>
+            <button type="button">Cắt viền tự động file R 1.7V 300k</button>
+            <button type="button">Bật tông file cam_4lop_1 R 4V 10k cho vết nứt rõ hơn</button>
+            <button type="button">Nhận diện vết nứt file R 1.7V 300k</button>
+            <button type="button">So sánh R và P của cambien 1.3V 200k 145x95</button>
+          </div>
+        </div>
+      </div>
+
+      <form id="composer" class="composer">
+        <textarea id="input" rows="2" placeholder="Nhập câu hỏi hoặc lệnh vẽ… (Enter để gửi, Shift+Enter xuống dòng)"></textarea>
+        <button id="send" type="submit">Gửi</button>
+      </form>
+    </section>
+
+    <!-- RIGHT: result images -->
+    <section class="viewer" aria-label="Kết quả hình ảnh">
+      <header class="bar"><div id="imgTitle" class="img-title">Chưa có hình</div>
+        <a id="openFull" class="ghost link" target="_blank" rel="noopener" hidden>Mở ảnh gốc</a></header>
+      <div class="stage">
+        <img id="mainImg" alt="" hidden>
+        <div id="placeholder" class="placeholder">Hình do trợ lý vẽ sẽ hiện ở đây.</div>
+      </div>
+      <div id="caption" class="caption"></div>
+      <div id="strip" class="strip" aria-label="Các hình trong cuộc chat"></div>
+    </section>
+  </main>
+  <script src="/static/app.js"></script>
+</body>
+</html>

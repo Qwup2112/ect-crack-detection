@@ -1,14 +1,19 @@
-# Analysis backend
+# ECT Crack Chat. Install into the project venv:
+#   python -m venv --system-site-packages .venv
+#   .venv\Scripts\python -m pip install -r requirements.txt
+
+# Scan processing (app/backend/ect)
 npTDMS>=1.9
 numpy>=1.24
 scipy>=1.10
-pandas>=2.0
 matplotlib>=3.7
+pillow>=10
 
-# dataloader.py - used for the default 'bg' detrend (falls back to 'row' without them)
-scikit-learn
-h5py
-PyWavelets
+# Crack detection model (YOLO11n weights in results/model/). Large: pulls in PyTorch.
+ultralytics>=8.3
 
-# AI assistant tab only - the analysis tools work without it
-anthropic>=1.0
+# Web backend + chat agent. The agent is the Claude Code harness as a library and runs on
+# this PC's Claude Code login - no API key.
+fastapi>=0.115
+uvicorn[standard]>=0.30
+claude-agent-sdk>=0.2

@@ -1,0 +1,31 @@
+{
+  "permissions": {
+    "deny": [
+      "Edit(data/**)",
+      "Edit(results/labels/**)"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "if": "Edit(app/backend/ect/**)",
+            "command": "\"$CLAUDE_PROJECT_DIR/.venv/Scripts/python.exe\" \"$CLAUDE_PROJECT_DIR/app/tests/hook_smoke.py\"",
+            "timeout": 120,
+            "statusMessage": "Smoke test app/backend/ect..."
+          },
+          {
+            "type": "command",
+            "if": "Write(app/backend/ect/**)",
+            "command": "\"$CLAUDE_PROJECT_DIR/.venv/Scripts/python.exe\" \"$CLAUDE_PROJECT_DIR/app/tests/hook_smoke.py\"",
+            "timeout": 120,
+            "statusMessage": "Smoke test app/backend/ect..."
+          }
+        ]
+      }
+    ]
+  }
+}
