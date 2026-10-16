@@ -6,7 +6,8 @@ and producing the standard crack-detection figures, plus sensor comparison table
 
 TDMS structure of this dataset (verified by code, not assumed):
     Group "Freq_Sampling_SizeX_SizeY" -> 1 channel, 4 values [freq_Hz, sampling, sizeX, sizeY]
-    Group "Waveform"                  -> 1 channel, flat array sizeX*sizeY (raster: X fast, Y slow)
+    Group "Waveform"                  -> 1 channel, flat array sizeX*sizeY (serpentine raster: X fast,
+                                         Y slow, odd lines recorded right-to-left)
 Filenames encode the measurement parameters:
     <sample>_<sensor>_amp_<V>V_fre_<kHz>k_lf_<mm>mm_<W>x<H>mm.tdms
     sensor: R (amplitude), P (phase), or PECT/Differential/Feedback
@@ -22,10 +23,10 @@ FOUR COMMANDS
                         otherwise descriptive stats + derivative contrast)
 
 EXAMPLES
-  python tdms_crack_scan.py report DATA/4lop_R_amp_1.3V_fre_200k_lf_1mm_145x95mm.tdms
-  python tdms_crack_scan.py detect DATA/4lop_P_amp_1.3V_fre_200k_lf_1mm_145x95mm.tdms
-  python tdms_crack_scan.py sweep . --out sweep_all.csv
-  python tdms_crack_scan.py compare "DATA/*.tdms" --boxes auto_boxes.json --out sensor_compare.csv
+  python tdms_crack_scan.py report data/cambien_4lop_2/4lop_R_amp_1.3V_fre_200k_lf_1mm_145x95mm.tdms
+  python tdms_crack_scan.py detect data/cambien_4lop_2/4lop_P_amp_1.3V_fre_200k_lf_1mm_145x95mm.tdms
+  python tdms_crack_scan.py sweep            (all of data/ -> results/sweep_all.csv)
+  python tdms_crack_scan.py compare "data/cambien_4lop_2/*.tdms" --boxes auto_boxes.json --out sensor_compare.csv
 
 INSTALL: pip install npTDMS numpy scipy matplotlib pandas
 """
@@ -35,6 +36,7 @@ import glob
 import json
 import re
 import sys
+import textwrap
 from pathlib import Path
 
 import numpy as np
@@ -55,6 +57,87 @@ except ImportError:
     median_filter = gaussian_filter = label = find_objects = binary_dilation = None
 
 INK, MUTED, SURFACE = "#0b0b0b", "#6b6a64", "#fcfcfb"
+
+# Project layout: data/<session>/*.tdms (raw scans only), results/<session>/ (generated
+# output), scripts/ (lab scripts incl. dataloader.py), tools/crack_heatmap/ (this file).
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+DATA_DIR = PROJECT_ROOT / "data"
+RESULTS_DIR = PROJECT_ROOT / "results"
+
+# dataloader.py is imported lazily: at module level it pulls in scikit-learn, h5py and
+# PyWavelets, and the default pipeline must keep working on a machine without them.
+_DATALOADER_DIR = PROJECT_ROOT / "scripts"
+
+
+def result_dir(tdms):
+    """Output folder for one scan: results/<session>/<stem>_results for a scan under data/,
+    so generated files never mix with raw data; next to the scan for a file elsewhere."""
+    p = Path(tdms).resolve()
+    try:
+        out = RESULTS_DIR / p.parent.relative_to(DATA_DIR) / f"{p.stem}_results"
+    except ValueError:
+        out = p.parent / f"{p.stem}_results"
+    out.mkdir(parents=True, exist_ok=True)
+    return out
+
+FILTERS = ["lpf", "median", "gaussian", "wavelet", "none"]
+DETRENDS = ["row", "col", "both", "poly", "bg", "surface", "linear", "none"]
+LPF_CUTOFF = 0.3
+# 'bg' is the only option that gives one box per crack on the 3x5 coupon (compared visually
+# against row/surface on the best R and P scans); 'row' merges cracks sharing a column.
+# 'lpf' removes the remaining sawtooth. Both are the lab's dataloader.py functions, written
+# out here with scipy alone (_lpf_columns, _bg_detrend): importing dataloader.py also loads
+# scikit-learn, whose compiled files Windows Smart App Control blocks on this PC ("An
+# Application Control policy has blocked this file") - the default pipeline must not depend
+# on it. Only the optional surface / linear / wavelet options still import dataloader.py.
+DEFAULT_FILTER = "lpf" if median_filter is not None else "median"
+DEFAULT_DETREND = "bg" if gaussian_filter is not None else "row"
+
+
+def _lpf_columns(img, cutoff=LPF_CUTOFF, order=24):
+    """dataloader.LPF_1D applied down every column (along Y): Hamming-window FIR, the ends
+    padded with 50 copies of the edge value, group delay (order/2) removed. Same numbers as
+    dataloader.LPF, vectorised over columns."""
+    from scipy.signal import firwin, lfilter
+    b = firwin(order + 1, cutoff, window="hamming", pass_zero="lowpass")
+    x = np.pad(np.asarray(img, dtype=float), ((50, 50), (0, 0)), mode="edge")
+    y = lfilter(b, 1.0, x, axis=0)
+    return y[50 + order // 2: y.shape[0] - 50 + order // 2]
+
+
+def _bg_detrend(img, sigma=8):
+    """dataloader.remove_background_trend(img, 'gaussian', sigma_trend=8, sigma_noise=0):
+    subtract a heavy Gaussian blur - wider than a crack, narrower than the crack spacing."""
+    img = np.asarray(img, dtype=np.float32)
+    return (img - gaussian_filter(img, sigma=sigma)).astype(float)
+
+
+def _dataloader():
+    if str(_DATALOADER_DIR) not in sys.path:
+        sys.path.insert(0, str(_DATALOADER_DIR))
+    try:
+        import dataloader
+    except ImportError as e:
+        blocked = "Application Control" in str(e) or "DLL load failed" in str(e)
+        raise RuntimeError(
+            f"this option uses dataloader.py ({_DATALOADER_DIR}), which needs "
+            f"'{e.name}'"
+            + (" - Windows blocked that library's file (Smart App Control). Use the default "
+               "'lpf' filter and 'bg' detrend, which do not need it." if blocked else
+               ": pip install scikit-learn h5py PyWavelets")) from e
+    return dataloader
+
+
+def preload():
+    """Import the compiled libraries the default pipeline uses, on the CALLING thread. The
+    app calls this on its main thread at start-up: imported first from a worker thread,
+    scipy came up half-initialised on Python 3.14 and the first Draw figures failed.
+    Returns an error message, or None."""
+    try:
+        import scipy.ndimage, scipy.signal  # noqa: E401,F401
+    except Exception as e:                  # the app still runs; the option reports it
+        return str(e)
+    return None
 
 # This dataset uses 5 different naming conventions across measurement sessions:
 #   4lop_R_amp_1.3V_fre_200k_lf_1mm_145x95mm   (standard, with plate size)
@@ -80,9 +163,12 @@ def parse_name(path):
     return m.groupdict() if m else {}
 
 
-def load_scan(path):
+def load_scan(path, serpentine=True, fix_direction=True):
     """
     Read a TDMS file -> 2D grid (Y rows, X columns) + metadata.
+    serpentine=True un-mirrors the odd scan lines (verified on all 101 readable files in
+    this dataset: row-to-row jumps drop 3-8x). Pass False only for a unidirectional scanner.
+    fix_direction=True then aligns the two scan directions (see fix_scan_direction).
     Raises a clear error instead of returning wrong data when a group,
     channel, or sample count is missing.
     """
@@ -120,6 +206,14 @@ def load_scan(path):
         size_y = full_rows
 
     grid = raw.reshape(size_y, size_x)
+    if serpentine:
+        # The scanner runs back and forth (boustrophedon): odd lines are recorded right-to-left.
+        # Same mapping as dataloader.reshape_raster. Without this every other row is mirrored,
+        # which shows up as a zig-zag / row-to-row oscillation across every crack.
+        grid[1::2] = grid[1::2, ::-1]
+    row_shift, row_offset = 0, 0.0
+    if serpentine and fix_direction:
+        grid, row_shift, row_offset = fix_scan_direction(grid)
 
     fname_info = parse_name(path)
     pitch = 1.0  # mm/pixel - default; stated as an ASSUMPTION when the filename lacks a size
@@ -138,8 +232,43 @@ def load_scan(path):
         "path": str(path), "freq_hz": freq_hz, "sampling": sampling,
         "size_x": size_x, "size_y": size_y, "pitch_mm": pitch,
         "truncated_rows": truncated_rows,
+        "row_shift_px": row_shift, "row_offset": row_offset,
         **fname_info,
     }
+
+
+def _sawtooth(img, trim=12):
+    """Row-to-row zig-zag energy: mean |2nd difference along Y|, ignoring the scan-turn edges."""
+    f = img[:, trim:-trim] if img.shape[1] > 3 * trim else img
+    return float(np.mean(np.abs(f[2:] - 2 * f[1:-1] + f[:-2])))
+
+
+def fix_scan_direction(grid, max_shift=5):
+    """
+    Align the right-to-left lines with the left-to-right lines (the "sawtooth" / comb).
+
+    Two faults between the two scan directions, both measured on this dataset:
+      - POSITION: the probe lags when it reverses, so return lines sit a few px off
+        (cam_4lop_1: exactly 2 px on 26/28 files; early_session: mostly 5 px);
+      - LEVEL: the return lines carry a small constant offset.
+    The shift is chosen as the one that minimizes the sawtooth itself (tested -max..+max);
+    the level is matched by medians. Together they remove 50-60% of the sawtooth.
+    Shifted-in columns are filled with the edge value, never wrapped around.
+    """
+    best = None
+    for k in range(-max_shift, max_shift + 1):
+        out = grid.copy()
+        odd = np.roll(grid[1::2], k, axis=1)
+        if k > 0:
+            odd[:, :k] = odd[:, [k]]
+        elif k < 0:
+            odd[:, k:] = odd[:, [k - 1]]
+        offset = float(np.median(odd) - np.median(grid[0::2]))
+        out[1::2] = odd - offset
+        s = _sawtooth(out)
+        if best is None or s < best[0]:
+            best = (s, out, k, offset)
+    return best[1], best[2], best[3]
 
 
 # ---------------------------------------------------------------- image processing
@@ -155,6 +284,18 @@ def apply_filter(img, method="median", kernel=3):
         return median_filter(img, size=kernel, mode="nearest")
     if method == "gaussian":
         return gaussian_filter(img, sigma=kernel / 2.0, mode="nearest")
+    if method == "lpf":
+        # dataloader.LPF (Hamming FIR, group delay removed; see _lpf_columns) down every column, i.e. along Y -
+        # the axis where the remaining row-to-row sawtooth lives - then a median of size
+        # `kernel`. Cutoff 0.3: sawtooth down to 0.33x on the R 200 kHz scan while the
+        # ~15 px tall crack lobes, including the faint deep row, keep their shape.
+        smooth = _lpf_columns(img)
+        return median_filter(smooth, size=kernel, mode="nearest")
+    if method == "wavelet":
+        # dataloader.wavelet_denoise: soft-threshold db4 detail coefficients. kernel sets the
+        # threshold (x noise sigma). waverec2 pads odd sizes by one, so crop back.
+        out = _dataloader().wavelet_denoise(img, wavelet="db4", level=2, threshold_ratio=kernel)
+        return out[:img.shape[0], :img.shape[1]]
     raise ValueError(f"invalid filter method: {method}")
 
 
@@ -186,8 +327,18 @@ def detrend(img, method="row"):
              a bright background on both left and right that a row detrend never touches)
       both - remove in both directions
       poly - subtract a 2nd-order polynomial fitted along Y
+      bg   - dataloader.remove_background_trend: subtract a heavy Gaussian blur (sigma 8 px,
+             wider than a crack, narrower than the crack spacing) - removes 2D background
+      surface - dataloader.detrend_2d_surface: subtract a fitted 3rd-order 2D surface
+      linear  - dataloader.detrend_1d: remove a straight-line trend along rows, then columns
       none - leave unchanged
     """
+    if method == "bg":
+        return _bg_detrend(img)
+    if method == "surface":
+        return _dataloader().detrend_2d_surface(img, degree=3)
+    if method == "linear":
+        return _dataloader().detrend_1d(img)
     if method == "none":
         return img.copy()
     if method == "row":
@@ -331,21 +482,82 @@ def detect_cracks(img, z_thresh=2.5, min_area=6, edge=0, merge_gap=3, detrend_me
 
 # ---------------------------------------------------------------- figures
 
-def _panel(ax, img, title, cmap, norm=None, vmin=None, vmax=None, pitch=1.0, cbar_label=""):
+# Colour limits from percentiles, not min/max. With min/max a handful of extreme pixels
+# (the bright scan-edge band, one derivative spike) stretch the scale and every crack is
+# squeezed into a few pale shades: on the R 200 kHz scan 89% of the dA/dx pixels stayed
+# below a quarter of full colour. Pixels beyond the limits show at full colour and the
+# colorbar gets arrow ends to say so.
+# Axis names on every map (both are scan positions in mm).
+X_LABEL = "X"
+Y_LABEL = "Y"
+
+CLIP_PCT = 2.0        # sequential maps: colour spans the 2nd..98th percentile
+CLIP_PCT_DIV = 99.0   # diverging maps: +/- the 99th percentile of |value|
+
+
+def robust_limits(img, pct=CLIP_PCT):
+    lo, hi = np.nanpercentile(img, [pct, 100 - pct])
+    if not hi > lo:                      # flat or binary image: fall back to the full range
+        lo, hi = np.nanmin(img), np.nanmax(img)
+    return float(lo), float(hi)
+
+
+def diverging_norm(img, pct=CLIP_PCT_DIV):
+    lim = float(np.nanpercentile(np.abs(img), pct)) or float(np.nanmax(np.abs(img))) or 1.0
+    return TwoSlopeNorm(vcenter=0.0, vmin=-lim, vmax=lim)
+
+
+def _panel(ax, img, title, cmap, norm=None, vmin=None, vmax=None, pitch=1.0, cbar_label="",
+           scale=1.0, wrap=26, robust=True):
+    """One heatmap + colorbar. scale enlarges the text for a single full-size view.
+    robust=True sets the colour limits from percentiles (see CLIP_PCT)."""
     H, W = img.shape
+    extend = "neither"
+    if robust:
+        if norm is None and vmin is None and vmax is None:
+            vmin, vmax = robust_limits(img)
+            if np.nanmin(img) < vmin or np.nanmax(img) > vmax:
+                extend = "both"
+        elif norm is not None and np.nanmax(np.abs(img)) > norm.vmax:
+            extend = "both"
     extent = [0, W * pitch, H * pitch, 0]
     im = ax.imshow(img, cmap=cmap, norm=norm, vmin=vmin, vmax=vmax,
-                    extent=extent, aspect="equal", interpolation="nearest")
-    ax.set_title(title, loc="left", fontsize=10, color=INK, pad=6)
-    ax.set_xlabel("X (mm)", color=MUTED, fontsize=8)
-    ax.set_ylabel("Y (mm)", color=MUTED, fontsize=8)
-    ax.tick_params(colors=MUTED, labelsize=7)
+                    extent=extent, aspect="equal", interpolation="bilinear")
+    # wrap long titles: a left-aligned title wider than its panel runs into the colorbar
+    ax.set_title(textwrap.fill(title, wrap), loc="left", fontsize=10 * scale, color=INK, pad=6)
+    ax.set_xlabel(f"{X_LABEL} (mm)", color=MUTED, fontsize=8 * scale)
+    ax.set_ylabel(f"{Y_LABEL} (mm)", color=MUTED, fontsize=8 * scale)
+    ax.tick_params(colors=MUTED, labelsize=7 * scale)
     for s in ax.spines.values():
         s.set_color("#c3c2b7")
-    cb = plt.colorbar(im, ax=ax, fraction=0.046, pad=0.03)
-    cb.ax.tick_params(labelsize=7, colors=MUTED)
+    cb = ax.figure.colorbar(im, ax=ax, fraction=0.046, pad=0.03, extend=extend)
+    cb.ax.tick_params(labelsize=7 * scale, colors=MUTED)
     if cbar_label:
-        cb.set_label(cbar_label, fontsize=8, color=MUTED)
+        cb.set_label(cbar_label, fontsize=8 * scale, color=MUTED)
+
+
+def _draw_view(ax, v, pitch, scale=1.0, wrap=26):
+    """Draw one view spec (see report_views / detect_views), including any crack boxes."""
+    _panel(ax, v["img"], v["title"], v["cmap"], norm=v.get("norm"), pitch=pitch,
+           cbar_label=v.get("cbar", ""), scale=scale, wrap=wrap,
+           robust=v.get("robust", True))
+    for b in v.get("boxes", ()):
+        if b.get("touches_edge"):
+            continue                  # the plate edge / scan border, not a crack
+        # green = crack found; red = the model's box matches none of the labels
+        color = "#ff4d4d" if b.get("match") is False else "#39ff88"
+        ax.add_patch(mpatches.Rectangle(
+            (b["x0"] * pitch, b["y0"] * pitch),
+            (b["x1"] - b["x0"]) * pitch, (b["y1"] - b["y0"]) * pitch,
+            fill=False, linewidth=0.7 * scale, edgecolor=color))
+        if "conf" in b:
+            ax.text(b["x0"] * pitch, b["y0"] * pitch, f"{b['conf']:.2f}", color=color,
+                    fontsize=6 * scale, va="bottom", ha="left")
+    for b in v.get("missed", ()):     # labels no detection matched: only these are drawn
+        ax.add_patch(mpatches.Rectangle(
+            (b["x0"] * pitch, b["y0"] * pitch),
+            (b["x1"] - b["x0"]) * pitch, (b["y1"] - b["y0"]) * pitch,
+            fill=False, linewidth=0.7 * scale, edgecolor="#ff4fd8", linestyle=":"))
 
 
 def resolve_crop(filtered, margin_arg, auto_z=3.0):
@@ -362,57 +574,259 @@ def resolve_crop(filtered, margin_arg, auto_z=3.0):
     return cropped, m, label_txt
 
 
-def build_report_figure(raw, filtered, cropped, meta, crop_label, filter_label, title):
-    """Build the 6-panel figure. Shared by the CLI and the desktop app."""
+def signal_name(sensor):
+    """What a map's values are: sensor P records the PHASE, R (and others) the amplitude."""
+    return "Phase" if sensor == "P" else "Amplitude"
+
+
+def report_views(raw, filtered, cropped, crop_label, filter_label, sensor=None,
+                 margins=None):
+    """
+    The 6 standard views as specs {key, title, img, cmap, norm, cbar}. Drawn all together
+    by build_report_figure, or one at a time and full size by build_view_figure (the app
+    shows each view on its own so the image is large enough to read).
+    Each view carries "offset" = (left, top): where its pixel (0, 0) sits in the original
+    grid (0 for the uncropped raw/filtered maps, the crop margins for the others).
+    Returns (views, dx, dx_abs).
+    """
     dx = x_derivative(cropped)
     dx_abs = float(np.nanmax(np.abs(dx))) or 1.0
-    diverge_norm = TwoSlopeNorm(vcenter=0.0, vmin=-dx_abs, vmax=dx_abs)
+    diverge_norm = diverging_norm(dx)
+    word = signal_name(sensor)
+    amp = f"{word} (a.u.)"
+    views = [
+        {"key": "raw", "title": "1. Raw (before filter)", "img": raw,
+         "cmap": "viridis", "cbar": amp},
+        {"key": "filtered", "title": f"2. Filtered ({filter_label})", "img": filtered,
+         "cmap": "viridis", "cbar": amp},
+        {"key": "cropped", "title": f"3. Cropped ({crop_label})", "img": cropped,
+         "cmap": "viridis", "cbar": amp},
+        {"key": "amplitude", "title": f"4. {word} heatmap (filtered + cropped)",
+         "img": cropped, "cmap": "magma", "cbar": amp},
+        {"key": "dx", "title": "5. X-Derivative (dA/dx)", "img": dx,
+         "cmap": "RdBu_r", "norm": diverge_norm, "cbar": "dA/dx"},
+        {"key": "dx_inv", "title": "6. X-Derivative Inverse (-dA/dx)", "img": -dx,
+         "cmap": "RdBu_r", "norm": diverge_norm, "cbar": "-dA/dx"},
+    ]
+    off = (margins["left"], margins["top"]) if margins else (0, 0)
+    for v in views:
+        v["offset"] = (0, 0) if v["key"] in ("raw", "filtered") else off
+    return views, dx, dx_abs
+
+
+def shift_boxes(boxes, offset, shape):
+    """Boxes in original grid pixels -> the pixels of a view whose (0, 0) sits at `offset`
+    = (left, top) in the original grid, clipped to the view `shape`. Boxes entirely off
+    the view (inside a cropped border) are left out. Other keys (conf, match) are kept."""
+    ox, oy = offset
+    H, W = shape
+    out = []
+    for b in boxes:
+        x0, y0 = max(0, b["x0"] - ox), max(0, b["y0"] - oy)
+        x1, y1 = min(W, b["x1"] - ox), min(H, b["y1"] - oy)
+        if x1 > x0 and y1 > y0:
+            out.append({**b, "x0": x0, "y0": y0, "x1": x1, "y1": y1})
+    return out
+
+
+def detect_views(cropped, zmap, mask, boxes, z_thresh, detrend_label, margins=None):
+    """The 3 detection views as specs (see report_views)."""
+    off = (margins["left"], margins["top"]) if margins else (0, 0)
+    views = [
+        {"key": "boxes", "title": "1. Cropped heatmap + located cracks", "img": cropped,
+         "cmap": "magma", "cbar": "Amplitude (a.u.)", "boxes": boxes},
+        {"key": "zmap", "title": f"2. z-score map (detrend: {detrend_label})", "img": zmap,
+         "cmap": "RdBu_r", "norm": diverging_norm(zmap),
+         "cbar": "z (robust)"},
+        {"key": "mask", "title": f"3. Mask |z| > {z_thresh}", "img": mask.astype(float),
+         "cmap": "gray_r", "cbar": "1 = candidate", "robust": False},
+    ]
+    for v in views:
+        v["offset"] = off
+    return views
+
+
+def build_view_figure(view, meta, title, point=None):
+    """ONE view, full size, with larger text - for looking at a single map closely.
+    point=(x_mm, y_mm) marks a looked-up point with a crosshair."""
+    fig, ax = plt.subplots(figsize=(11, 7), facecolor=SURFACE, layout="constrained")
+    fig.suptitle(title, fontsize=12, color=INK)
+    _draw_view(ax, view, meta["pitch_mm"], scale=1.5, wrap=80)
+    if point is not None:
+        _mark_point(ax, point)
+    return fig
+
+
+def _to_index(pos_mm, pitch, n, name):
+    """mm -> pixel index. Pixel i covers [i*pitch, (i+1)*pitch) (see the imshow extent).
+    A position off the map is an error, not silently clamped to the edge pixel."""
+    size = n * pitch
+    if not 0 <= pos_mm <= size:
+        raise ValueError(f"{name} = {pos_mm:g} mm is outside this map (0 to {size:.1f} mm).")
+    return int(min(np.floor(pos_mm / pitch), n - 1))
+
+
+def value_at(view, meta, x_mm, y_mm):
+    """Value of a view at a point given in mm. Returns (value, col, row, x_mm, y_mm), the
+    last two being the centre of the pixel actually read."""
+    img, pitch = view["img"], meta["pitch_mm"]
+    col = _to_index(x_mm, pitch, img.shape[1], X_LABEL)
+    row = _to_index(y_mm, pitch, img.shape[0], Y_LABEL)
+    return float(img[row, col]), col, row, (col + 0.5) * pitch, (row + 0.5) * pitch
+
+
+def profile(view, meta, along, pos_mm):
+    """
+    1D cut through a view. along='x': the row at Y=pos_mm, signal as a function of X;
+    along='y': the column at X=pos_mm, signal as a function of Y.
+    Returns (positions_mm, values, index, pos_mm_of_that_pixel_centre).
+    """
+    img, pitch = view["img"], meta["pitch_mm"]
+    if along == "x":
+        i = _to_index(pos_mm, pitch, img.shape[0], Y_LABEL)
+        vals = img[i, :]
+    elif along == "y":
+        i = _to_index(pos_mm, pitch, img.shape[1], X_LABEL)
+        vals = img[:, i]
+    else:
+        raise ValueError(f"along must be 'x' or 'y', got {along!r}")
+    pos = (np.arange(vals.size) + 0.5) * pitch
+    return pos, vals, i, (i + 0.5) * pitch
+
+
+def _mark_point(ax, point):
+    ax.plot(*point, marker="+", markersize=22, markeredgewidth=2.5, color="#00e5ff")
+    ax.plot(*point, marker="o", markersize=10, fillstyle="none",
+            markeredgewidth=1.5, color="#00e5ff")
+
+
+def _draw_profile_axes(ax_map, ax_p, view, meta, along, pos_mm, scale=1.2):
+    """Map with the cut line (ax_map) + the 1D signal along that line (ax_p)."""
+    pos, vals, i, at = profile(view, meta, along, pos_mm)
     pitch = meta["pitch_mm"]
+    _draw_view(ax_map, view, pitch, scale=scale, wrap=80)
+    line = dict(color="#00e5ff", linewidth=2, linestyle="--")
+    if along == "x":
+        ax_map.axhline(at, **line)
+        cut, xlab = f"row {i} at {Y_LABEL} = {at:.1f} mm", X_LABEL
+    else:
+        ax_map.axvline(at, **line)
+        cut, xlab = f"column {i} at {X_LABEL} = {at:.1f} mm", Y_LABEL
 
-    fig, axes = plt.subplots(2, 3, figsize=(16, 9.5), facecolor=SURFACE)
-    fig.suptitle(title, fontsize=12, color=INK, y=0.99)
+    ax_p.plot(pos, vals, color=INK, linewidth=1.6)
+    if view.get("norm") is not None:          # derivative / z maps: show the zero line
+        ax_p.axhline(0, color=MUTED, linewidth=0.8)
+    ax_p.set_xlim(pos[0] - 0.5 * pitch, pos[-1] + 0.5 * pitch)
+    ax_p.set_title(f"Profile - {cut}", loc="left", fontsize=12, color=INK)
+    ax_p.set_xlabel(f"{xlab} (mm)", color=MUTED, fontsize=11)
+    ax_p.set_ylabel(view.get("cbar") or "value", color=MUTED, fontsize=11)
+    ax_p.tick_params(colors=MUTED, labelsize=10)
+    ax_p.grid(True, color="#e4e3dc", linewidth=0.7)
+    for sp in ax_p.spines.values():
+        sp.set_color("#c3c2b7")
+    return pos, vals
 
-    _panel(axes[0, 0], raw, "1. Raw (before filter)", "viridis", pitch=pitch,
-           cbar_label="Amplitude (a.u.)")
-    _panel(axes[0, 1], filtered, f"2. Filtered ({filter_label})", "viridis",
-           pitch=pitch, cbar_label="Amplitude (a.u.)")
-    _panel(axes[0, 2], cropped, f"3. Cropped ({crop_label})", "viridis",
-           pitch=pitch, cbar_label="Amplitude (a.u.)")
-    _panel(axes[1, 0], cropped, "4. Amplitude heatmap (filtered + cropped)", "magma",
-           pitch=pitch, cbar_label="Amplitude (a.u.)")
-    _panel(axes[1, 1], dx, "5. X-Derivative (dA/dx)", "RdBu_r", norm=diverge_norm,
-           pitch=pitch, cbar_label="dA/dx")
-    _panel(axes[1, 2], -dx, "6. X-Derivative Inverse (-dA/dx)", "RdBu_r", norm=diverge_norm,
-           pitch=pitch, cbar_label="-dA/dx")
 
-    fig.tight_layout(rect=[0, 0, 1, 0.94])
+def build_profile_figure(view, meta, title, along, pos_mm):
+    """Map with the cut line marked (top) + the 1D signal along that line (bottom)."""
+    fig, (ax_map, ax_p) = plt.subplots(2, 1, figsize=(11, 8.5), facecolor=SURFACE,
+                                       layout="constrained", height_ratios=[1.35, 1])
+    fig.suptitle(title, fontsize=12, color=INK)
+    pos, vals = _draw_profile_axes(ax_map, ax_p, view, meta, along, pos_mm)
+    return fig, pos, vals
+
+
+# ---------------------------------------------------------------- R + P pairs
+
+def pair_partner(path):
+    """The other sensor's file of the same measurement (R <-> P, same amp/freq/lift-off/
+    size, same folder), or None. All 51 R/P pairs in this dataset share one grid size."""
+    p = Path(path)
+    m = NAME_RE.search(p.stem)
+    if not m or m.group("sensor") not in ("R", "P"):
+        return None
+    a, b = m.span("sensor")
+    other = "P" if m.group("sensor") == "R" else "R"
+    q = p.with_name(p.stem[:a] + other + p.stem[b:] + p.suffix)
+    return q if q.exists() else None
+
+
+def shared_crop(filtered_list, margin_arg, auto_z=3.0):
+    """
+    Crop several scans of the SAME measurement with ONE set of margins. Cropping R and P
+    separately would give each its own origin, so the same (X, Y) in mm would point at two
+    different spots on the plate. With 'auto', each side takes the larger of the measured
+    noisy borders, so both images are clean.
+    """
+    if str(margin_arg).lower() == "auto":
+        found = [auto_border_margin(f, z_thresh=auto_z)[1] for f in filtered_list]
+        m = {k: max(x[k] for x in found) for k in ("top", "bottom", "left", "right")}
+        label = (f"auto, shared R+P: top {m['top']} bottom {m['bottom']} "
+                 f"left {m['left']} right {m['right']} px")
+    else:
+        n = int(margin_arg)
+        m = {"top": n, "bottom": n, "left": n, "right": n}
+        label = f"fixed {n}px per side"
+    crops = []
+    for f in filtered_list:
+        H, W = f.shape
+        if m["top"] + m["bottom"] >= H or m["left"] + m["right"] >= W:
+            raise ValueError(f"crop {m} is too large for a {H}x{W} image")
+        crops.append(f[m["top"]:H - m["bottom"], m["left"]:W - m["right"]])
+    return crops, m, label
+
+
+def _tagged(view, sensor):
+    v = dict(view)
+    v["title"] = f"{sensor}  -  {view['title']}"
+    return v
+
+
+def build_pair_figure(view_r, view_p, meta, title, point=None):
+    """The same map for R (left) and P (right), side by side. Each keeps its own colour
+    scale: R is an amplitude and P a phase, so their values are not comparable."""
+    fig, axes = plt.subplots(1, 2, figsize=(17, 6.5), facecolor=SURFACE, layout="constrained")
+    fig.suptitle(title, fontsize=12, color=INK)
+    for ax, v, sensor in zip(axes, (view_r, view_p), "RP"):
+        _draw_view(ax, _tagged(v, sensor), meta["pitch_mm"], scale=1.25, wrap=70)
+        if point is not None:
+            _mark_point(ax, point)
+    return fig
+
+
+def build_pair_profile_figure(view_r, view_p, meta, title, along, pos_mm):
+    """R and P maps with the same cut line (top) and their profiles (bottom)."""
+    fig, axes = plt.subplots(2, 2, figsize=(17, 9), facecolor=SURFACE,
+                             layout="constrained", height_ratios=[1.3, 1])
+    fig.suptitle(title, fontsize=12, color=INK)
+    out = []
+    for col, (v, sensor) in enumerate(zip((view_r, view_p), "RP")):
+        pos, vals = _draw_profile_axes(axes[0, col], axes[1, col], _tagged(v, sensor),
+                                       meta, along, pos_mm, scale=1.1)
+        out.append((sensor, pos, vals))
+    return fig, out
+
+
+def build_report_figure(raw, filtered, cropped, meta, crop_label, filter_label, title):
+    """Build the 6-panel overview figure. Shared by the CLI and the desktop app."""
+    views, dx, dx_abs = report_views(raw, filtered, cropped, crop_label, filter_label,
+                                     meta.get("sensor"))
+    fig, axes = plt.subplots(2, 3, figsize=(16, 9.5), facecolor=SURFACE,
+                             layout="constrained")
+    fig.suptitle(title, fontsize=12, color=INK)
+    for ax, v in zip(axes.flat, views):
+        _draw_view(ax, v, meta["pitch_mm"])
     return fig, dx, dx_abs
 
 
 def build_detect_figure(cropped, zmap, mask, boxes, meta, title, z_thresh, detrend_label):
-    """Build the 3-panel detection figure. Shared by the CLI and the desktop app."""
-    pitch = meta["pitch_mm"]
-    fig, axes = plt.subplots(1, 3, figsize=(17, 5.4), facecolor=SURFACE)
-    fig.suptitle(title, fontsize=11, color=INK, y=1.0)
-
-    _panel(axes[0], cropped, "1. Cropped heatmap + located cracks", "magma",
-           pitch=pitch, cbar_label="Amplitude (a.u.)")
-    for b in boxes:
-        axes[0].add_patch(mpatches.Rectangle(
-            (b["x0"] * pitch, b["y0"] * pitch),
-            (b["x1"] - b["x0"]) * pitch, (b["y1"] - b["y0"]) * pitch,
-            fill=False, linewidth=1.2,
-            edgecolor="#ff9d3a" if b["touches_edge"] else "#39ff88",
-            linestyle="--" if b["touches_edge"] else "-"))
-
-    zlim = float(np.nanmax(np.abs(zmap))) or 1.0
-    _panel(axes[1], zmap, f"2. z-score map (detrend: {detrend_label})", "RdBu_r",
-           norm=TwoSlopeNorm(vcenter=0.0, vmin=-zlim, vmax=zlim),
-           pitch=pitch, cbar_label="z (robust)")
-    _panel(axes[2], mask.astype(float), f"3. Mask |z| > {z_thresh}", "gray_r",
-           pitch=pitch, cbar_label="1 = candidate")
-
-    fig.tight_layout(rect=[0, 0, 1, 0.9])
+    """Build the 3-panel detection overview figure. Shared by the CLI and the desktop app."""
+    views = detect_views(cropped, zmap, mask, boxes, z_thresh, detrend_label)
+    fig, axes = plt.subplots(1, 3, figsize=(17, 5.4), facecolor=SURFACE,
+                             layout="constrained")
+    fig.suptitle(title, fontsize=11, color=INK)
+    for ax, v in zip(axes, views):
+        _draw_view(ax, v, meta["pitch_mm"])
     return fig
 
 
@@ -428,8 +842,7 @@ def cmd_report(args):
     fig, dx, dx_abs = build_report_figure(
         raw, filtered, cropped, meta, crop_label, f"{args.filter}, k={args.kernel}", title)
 
-    outdir = Path(args.tdms).parent / f"{Path(args.tdms).stem}_results"
-    outdir.mkdir(exist_ok=True)
+    outdir = result_dir(args.tdms)
     fig_path = outdir / "crack_scan_report.png"
     fig.savefig(fig_path, dpi=150, facecolor=SURFACE)
     plt.close(fig)
@@ -477,8 +890,7 @@ def cmd_detect(args):
             b["id"] = f"crack_{i}"
 
     pitch = meta["pitch_mm"]
-    outdir = Path(args.tdms).parent / f"{Path(args.tdms).stem}_results"
-    outdir.mkdir(exist_ok=True)
+    outdir = result_dir(args.tdms)
 
     payload = {
         "source": Path(args.tdms).name,
@@ -525,10 +937,9 @@ def cmd_detect(args):
 
     if n_edge:
         verb = "Dropped" if args.drop_edge_boxes else "Kept"
-        print(f"\n{verb} {n_edge} candidate(s) TOUCHING THE IMAGE EDGE (orange dashed in the"
-              " figure). Scan borders often produce artifacts, so most of these are false"
-              " alarms; but a genuine crack near the plate edge also touches the edge, so"
-              " look at the figure before deciding."
+        print(f"\n{verb} {n_edge} candidate(s) TOUCHING THE IMAGE EDGE (listed in the box"
+              " files, not drawn). Scan borders often produce artifacts, so most of these"
+              " are false alarms."
               + ("" if args.drop_edge_boxes else " Add --drop-edge-boxes to remove them."))
 
     if not boxes:
@@ -549,9 +960,9 @@ def cmd_detect(args):
 
 # ---------------------------------------------------------------- sweep
 
-def analyze_one(path, filter_method="median", kernel=3, margin="auto",
-                detrend_method="row", z_thresh=2.5, min_area=6, merge_gap=2,
-                auto_margin_z=3.0):
+def analyze_one(path, filter_method=DEFAULT_FILTER, kernel=3, margin="auto",
+                detrend_method=DEFAULT_DETREND, z_thresh=2.5, min_area=6, merge_gap=2,
+                auto_margin_z=3.0, fix_direction=True):
     """
     Run the whole pipeline on ONE file and return a single row of numbers (no figures).
     Shared by the 'sweep' command (CLI) and the "Analyze all data" button (GUI).
@@ -569,7 +980,7 @@ def analyze_one(path, filter_method="median", kernel=3, margin="auto",
     row["variant"] = (info.get("variant") or "").lstrip("_")
 
     try:
-        grid, meta = load_scan(p)
+        grid, meta = load_scan(p, fix_direction=fix_direction)
     except ValueError as e:
         row["status"] = ("skipped: too few complete scan rows" if "complete scan rows" in str(e)
                          else "skipped: empty/template file (no Waveform)")
@@ -586,16 +997,21 @@ def analyze_one(path, filter_method="median", kernel=3, margin="auto",
     boxes, zmap, _ = detect_cracks(cropped, z_thresh=z_thresh, min_area=min_area,
                                    merge_gap=merge_gap, detrend_method=detrend_method)
     flat = detrend(filtered, detrend_method)
-    scores = sorted((b["score"] for b in boxes), reverse=True)
+    # Rank on interior candidates only. An edge-touching box is usually the plate edge the
+    # crop did not fully remove; merged, it becomes one image-sized box with a huge |z| that
+    # would otherwise top the whole ranking (seen on the data/P_* scans).
+    scores = sorted((b["score"] for b in boxes if not b["touches_edge"]), reverse=True)
 
     row.update({
         "size_px": f"{meta['size_x']}x{meta['size_y']}",
+        "row_shift_px": meta["row_shift_px"],
         "crop_top": m["top"], "crop_bottom": m["bottom"],
         "crop_left": m["left"], "crop_right": m["right"],
         "cropped_px": f"{cropped.shape[1]}x{cropped.shape[0]}",
         "n_boxes": len(boxes),
+        "n_inner": len(scores),
         "n_strong": sum(1 for s in scores if s >= 4.0),
-        "n_edge_boxes": sum(1 for b in boxes if b["touches_edge"]),
+        "n_edge_boxes": len(boxes) - len(scores),
         "z_max": round(scores[0], 2) if scores else 0.0,
         "z_top5": round(float(np.mean(scores[:5])), 2) if scores else 0.0,
         "std_raw": float(f"{np.nanstd(grid):.4g}"),
@@ -624,7 +1040,7 @@ def sweep_summary(df):
 
 def cmd_sweep(args):
     paths = []
-    for r in (args.paths or ["."]):
+    for r in (args.paths or [str(DATA_DIR)]):
         rp = Path(r)
         paths.extend(sorted(rp.rglob("*.tdms")) if rp.is_dir()
                      else sorted(Path().glob(r)))
@@ -653,7 +1069,7 @@ def cmd_sweep(args):
     if ok.empty:
         return
 
-    cols = ["folder", "sensor", "amp", "freq", "variant", "n_boxes", "n_strong",
+    cols = ["folder", "sensor", "amp", "freq", "variant", "n_inner", "n_strong",
             "z_max", "z_top5"]
     print(f"\n{'='*76}\nTOP 15 BY z_top5 (signal separation from background, normalized)")
     print(top[cols].to_string(index=False))
@@ -823,7 +1239,7 @@ def main():
 
     r = sub.add_parser("report", help="one file -> the 6 standard panels + numbers")
     r.add_argument("tdms", help="path to a .tdms file")
-    r.add_argument("--filter", default="median", choices=["median", "gaussian", "none"])
+    r.add_argument("--filter", default=DEFAULT_FILTER, choices=FILTERS)
     r.add_argument("--kernel", type=int, default=3)
     r.add_argument("--margin", default="auto",
                    help="'auto' (measure the noisy border) or a fixed pixel count")
@@ -833,7 +1249,7 @@ def main():
 
     d = sub.add_parser("detect", help="one file -> border crop + crack localization")
     d.add_argument("tdms", help="path to a .tdms file")
-    d.add_argument("--filter", default="median", choices=["median", "gaussian", "none"])
+    d.add_argument("--filter", default=DEFAULT_FILTER, choices=FILTERS)
     d.add_argument("--kernel", type=int, default=3)
     d.add_argument("--margin", default="auto",
                    help="'auto' (measure the noisy border) or a fixed pixel count")
@@ -848,28 +1264,27 @@ def main():
                    help="merge fragments closer than 2N px into one crack (0 = no merging)")
     d.add_argument("--drop-edge-boxes", action="store_true",
                    help="remove candidates touching the image edge instead of just flagging")
-    d.add_argument("--detrend", default="row", choices=["row", "col", "both", "poly", "none"],
+    d.add_argument("--detrend", default=DEFAULT_DETREND, choices=DETRENDS,
                    help="detrend direction before thresholding ('both' when the background "
                         "slopes along both axes)")
     d.set_defaults(func=cmd_detect)
 
     s = sub.add_parser("sweep", help="analyze an ENTIRE tree -> table + ranking")
-    s.add_argument("paths", nargs="*", default=["."],
-                   help="directories (searched recursively) or glob patterns; default '.'")
-    s.add_argument("--filter", default="median", choices=["median", "gaussian", "none"])
+    s.add_argument("paths", nargs="*", default=[str(DATA_DIR)],
+                   help="directories (searched recursively) or glob patterns; default data/")
+    s.add_argument("--filter", default=DEFAULT_FILTER, choices=FILTERS)
     s.add_argument("--kernel", type=int, default=3)
     s.add_argument("--margin", default="auto")
-    s.add_argument("--detrend", default="row",
-                   choices=["row", "col", "both", "poly", "none"])
+    s.add_argument("--detrend", default=DEFAULT_DETREND, choices=DETRENDS)
     s.add_argument("--z-thresh", type=float, default=2.5)
     s.add_argument("--min-area", type=int, default=6)
     s.add_argument("--merge-gap", type=int, default=2)
-    s.add_argument("--out", default="sweep_all.csv")
+    s.add_argument("--out", default=str(RESULTS_DIR / "sweep_all.csv"))
     s.set_defaults(func=cmd_sweep)
 
     c = sub.add_parser("compare", help="many files -> sensor/frequency comparison table")
-    c.add_argument("tdms", nargs="+", help="paths or glob patterns, e.g. 'DATA/*.tdms'")
-    c.add_argument("--filter", default="median", choices=["median", "gaussian", "none"])
+    c.add_argument("tdms", nargs="+", help="paths or glob patterns, e.g. 'data/cambien_4lop_2/*.tdms'")
+    c.add_argument("--filter", default=DEFAULT_FILTER, choices=FILTERS)
     c.add_argument("--kernel", type=int, default=3)
     c.add_argument("--edge", type=int, default=5)
     c.add_argument("--boxes", default=None, help="JSON label boxes (scan_metrics.py format)")

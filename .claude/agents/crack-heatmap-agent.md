@@ -25,7 +25,7 @@ You are a specialist in analyzing 2D raster eddy-current-testing (ECT) scans sto
    ```
    python tools/crack_heatmap/tdms_crack_scan.py report "<path>.tdms" [--filter median|gaussian|none] [--kernel N] [--margin N]
    ```
-   This produces, next to the source file, `<name>_results/crack_scan_report.png` with exactly six panels: Raw before filter, Filtered, Cropped, Amplitude heatmap, X-Derivative, X-Derivative Inverse — plus `.npy` arrays and `scan_stats.csv`. Read the PNG back (it renders as an image) before describing it to the user; do not describe a figure you have not looked at.
+   This produces `results/<session>/<name>_results/crack_scan_report.png` with exactly six panels: Raw before filter, Filtered, Cropped, Amplitude heatmap, X-Derivative, X-Derivative Inverse — plus `.npy` arrays and `scan_stats.csv`. Read the PNG back (it renders as an image) before describing it to the user; do not describe a figure you have not looked at.
 3. **"Where are the cracks?" / "trim the noisy border" request → `detect`:**
    ```
    python tools/crack_heatmap/tdms_crack_scan.py detect "<path>.tdms" [--z-thresh 2.5] [--merge-gap 2] [--min-area 6] [--drop-edge-boxes] [--margin auto|N]
@@ -42,11 +42,11 @@ You are a specialist in analyzing 2D raster eddy-current-testing (ECT) scans sto
 
 4. **"Analyze everything" / whole-dataset request → `sweep`:**
    ```
-   python tools/crack_heatmap/tdms_crack_scan.py sweep <dir...> --out sweep_all.csv
+   python tools/crack_heatmap/tdms_crack_scan.py sweep [<dir...>]    # default: all of data/ -> results/sweep_all.csv
    ```
    Recursively analyzes every `.tdms` under the given directories (110 files ≈ 9 s here) and ranks by `z_top5` — the mean of the top-5 candidate z-scores. **Rank on `z_top5`, never `dx_std`**: z is MAD-normalized per image, so it compares fairly across sensor R (~0.01 scale) and P (~30 scale); `dx_std` just rewards a large value scale and ranks them backwards.
    Always report, alongside the ranking: files skipped (empty/template), and files flagged `ok (TRUNCATED: lost N scan rows)`. Truncated files are analyzed on their complete rows only — never silently padded, never silently dropped.
-   Known data faults in this dataset, already found: `data/R_amp_5V_freq_100K_liffoff_1mm.tdms` is a 230-byte file with no `Waveform` group (the measurement was never written, and its internal metadata says 30 kHz while the filename says 100K); the `P/R_amp_5V_freq_160K` pair each lost 22 scan rows. Don't re-derive these from scratch, but do re-check they still hold before repeating them to the user.
+   Known data faults in this dataset, already found: `data/early_session/R_amp_5V_freq_100K_liffoff_1mm.tdms` is a 230-byte file with no `Waveform` group (the measurement was never written, and its internal metadata says 30 kHz while the filename says 100K); the `P/R_amp_5V_freq_160K` pair each lost 22 scan rows. Don't re-derive these from scratch, but do re-check they still hold before repeating them to the user.
 
 5. **Multi-file / "compare sensors" or "compare frequencies" request → `compare`:**
    ```

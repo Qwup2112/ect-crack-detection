@@ -8,6 +8,15 @@ venv/
 *_results/
 sweep_all.csv
 sensor_compare.csv
+# YOLO dataset/weights/runs - rebuilt by crack_model.py. Hand labels (results/labels/)
+# ARE tracked: they are the ground truth.
+results/model/
+# raw-map dataset detected by the model - rebuilt by crack_dataset.py
+results/dataset_raw/
+# Generated figures per session (heatmaps, plots) - reproducible, hundreds of MB.
+results/*/
+!results/labels/
+results/*.pptx
 
 # TDMS index files are regenerated automatically by npTDMS from the .tdms files
 *.tdms_index

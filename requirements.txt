@@ -5,5 +5,10 @@ scipy>=1.10
 pandas>=2.0
 matplotlib>=3.7
 
+# dataloader.py - used for the default 'bg' detrend (falls back to 'row' without them)
+scikit-learn
+h5py
+PyWavelets
+
 # AI assistant tab only - the analysis tools work without it
 anthropic>=1.0

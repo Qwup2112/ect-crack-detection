@@ -114,7 +114,6 @@ def build_context(meta, params, margins=None, cropped_shape=None,
         L.append(f"- |z| threshold: {params.get('z_thresh')}  "
                  f"| merge gap: {params.get('merge')} px "
                  f"| minimum area: {params.get('min_area')} px")
-        L.append(f"- Drop edge-touching boxes: {'yes' if params.get('drop_edge') else 'no'}")
 
     if margins:
         L.append("\n### BORDER NOISE REMOVED (measured automatically)")
@@ -189,10 +188,11 @@ def build_sweep_context(df, ok, skipped, best, params, root=None):
             L.append(f"- {r['folder']}/{r['file']}: {r['status']}")
 
     L.append("\n### COLUMN MEANINGS")
-    L.append("- z_max / z_top5: the largest z score and the mean of the 5 largest in the "
-             "image. z is normalized by each image's own background noise (median/MAD), so "
+    L.append("- z_max / z_top5: the largest z score and the mean of the 5 largest among the "
+             "INTERIOR candidates (edge-touching boxes excluded). z is normalized by each image's own background noise (median/MAD), so "
              "**it compares fairly between sensor R (~0.01 scale) and sensor P (~30 scale)**.")
-    L.append("- n_boxes / n_strong: number of candidates, and those with z >= 4.")
+    L.append("- n_boxes / n_inner / n_strong: all candidates, interior candidates, and "
+             "interior ones with z >= 4. The specimen has 15 cracks (3 x 5 grid).")
     L.append("- n_edge_boxes: candidates touching the image edge - mostly scan artifacts.")
     L.append("- crop_*: width of the noisy border trimmed automatically on each side (px).")
     L.append("- std_raw / dynamic_range: raw amplitude statistics. NOT comparable between "
@@ -208,7 +208,7 @@ def build_sweep_context(df, ok, skipped, best, params, root=None):
 
     cols = ["folder", "sensor", "amp", "freq", "variant", "size_px",
             "crop_top", "crop_bottom", "crop_left", "crop_right",
-            "n_boxes", "n_strong", "n_edge_boxes", "z_max", "z_top5"]
+            "n_boxes", "n_inner", "n_strong", "n_edge_boxes", "z_max", "z_top5"]
     cols = [c for c in cols if c in ok.columns]
     L.append(f"\n### FULL TABLE ({len(ok)} analyzed files, sorted by z_top5 descending)")
     L.append("| " + " | ".join(cols) + " |")
