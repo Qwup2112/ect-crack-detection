@@ -8,6 +8,7 @@ RESULTS_DIR = PROJECT_ROOT / "results"
 LABELS_DIR = RESULTS_DIR / "labels"
 MODEL_DIR = RESULTS_DIR / "model"
 WEIGHTS = MODEL_DIR / "crack_yolo.pt"
+ONNX_WEIGHTS = MODEL_DIR / "crack_yolo.onnx"     # same model for onnxruntime (app/tools/export_onnx.py)
 SPLIT_FILE = MODEL_DIR / "split.json"
 
 APP_DIR = PROJECT_ROOT / "app"

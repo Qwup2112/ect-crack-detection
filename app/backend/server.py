@@ -78,6 +78,11 @@ async def chat(body: ChatIn):
     if sess is None:
         sess = ChatSession(body.session_id)
         SESSIONS[sess.id] = sess
+    # Each chat's CLI process commits ~0.5 GB and this PC has little to spare (a second one can
+    # crash at start-up): only the active chat keeps one. An idle chat resumes on its next message.
+    for other in list(SESSIONS.values()):
+        if other is not sess and other.client is not None and not other.lock.locked():
+            await other.close()
 
     async def stream():
         yield sse("session", {"id": sess.id})

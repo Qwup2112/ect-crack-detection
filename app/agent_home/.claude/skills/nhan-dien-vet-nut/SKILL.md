@@ -8,16 +8,20 @@ description: Nhận diện vết nứt (crack detection) in ECT scans and how to
 ## Procedure
 
 1. Pick the scan (the PreToolUse hook resolves names; if it lists several, ask).
-2. Make sure the border is handled: the detector works on the auto-cropped map by default
-   (skill cat-vien). If edge boxes appear, look at the crop first.
-3. `detect_cracks` with method `yolo` (default). If YOLO cannot run (e.g. the machine is short of
-   memory) the tool falls back to the threshold detector and says so - pass that on.
+2. The border is handled for you: detect_cracks uses the auto crop unless the chat chose
+   another one, so do not call crop_border first just for detection. If edge boxes appear,
+   look at the crop (skill cat-vien) and re-run.
+3. `detect_cracks` with method `yolo` (default; runs on onnxruntime in about a second). If YOLO
+   cannot run, the tool falls back to the threshold detector and says so - pass that on.
 4. Report: the number of cracks, then each as `#n: X, Y (mm), box size, confidence`. Keep the
    numbering; the user will refer to "#3".
 5. If the scan has labels, report found / false / missed **and** that the labels are a draft.
    If the scan was in YOLO's training set, add that its score is optimistic.
-6. Offer the next step: measure a crack (`measure_crack`), view the dipole (`draw_scan dx`), or
-   cross-check with `method=threshold`.
+6. Check the result yourself before answering: 15 expected (3 x 5); if the count is far off
+   (< 12 or > 18), also run `method=threshold` and compare. If the user asked about size, run
+   `measure_crack` yourself. For a full analysis follow skill phan-tich-tu-dong.
+7. End with at most one optional next step as an offer (measure a crack, the dipole view
+   `draw_scan dx`), not a question the user must answer first.
 
 ## Interpreting
 

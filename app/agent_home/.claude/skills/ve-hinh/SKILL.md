@@ -25,6 +25,8 @@ answer with what it shows and the settings used.
 | "so sánh R và P", "so sánh tần số" | compare_scans (2-8 scans) |
 | "lát cắt", "profile", "giá trị dọc theo" | profile_line |
 | "đo vết nứt số n" | measure_crack |
+| "phân tích file X", "xử lý hết", "kết quả sau cùng" | the full pipeline (skill phan-tich-tu-dong) |
+| "histogram", "phổ / FFT", "theo tần số", "thống kê", any plot not listed above | run_python (skill phan-tich-python) |
 
 ## Conventions
 
@@ -33,4 +35,5 @@ answer with what it shows and the settings used.
 - For R vs P of one measurement, use compare_scans with both files: the same crop is not shared,
   but the ranking by z_top5 is fair.
 - When the user names a colour map, pass it as cmap and offer to remember it as a preference.
-- If the user asks for something no tool can draw, say so and offer the closest figure.
+- If no fixed tool can draw what the user asks, draw it with run_python (skill phan-tich-python)
+  instead of refusing.

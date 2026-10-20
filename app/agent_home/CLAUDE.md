@@ -43,5 +43,12 @@ while chatting goes to the long-term memory (remember / recall tools), not here.
 - It still fires on pure noise (17 boxes per noise image at conf 0.5): every training image had
   cracks. Boxes on the scan border are dropped as plate edge.
 - It has only seen this coupon: results do not transfer to other specimens without new labels.
-- If the machine is short of memory, torch cannot load and the tools fall back to the threshold
-  detector - say so when it happens.
+- It runs on onnxruntime (results/model/crack_yolo.onnx, identical boxes to the PyTorch model on
+  all 101 readable scans), which needs little memory. If it still cannot run, the tools fall back
+  to the threshold detector - say so when it happens.
+
+## Your tools beyond the fixed ones
+
+- run_python runs your own Python (numpy, scipy, matplotlib, the app's ect modules) in a
+  separate guarded process for analysis the fixed tools cannot do. It can write only in the
+  chat's work folder under app/state/work/; data/ and results/labels/ are read-only.

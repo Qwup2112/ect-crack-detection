@@ -3,6 +3,7 @@
 Each tool computes with app.backend.ect in a worker thread, saves any figure to the image
 store, pushes it to the right-hand panel through the session's event queue, and returns a
 text summary plus a small preview of the figure so the model can see what it drew.
+run_python (python_tool.py) runs the agent's own analysis code in a guarded child process.
 """
 import asyncio
 import base64
@@ -14,10 +15,12 @@ import numpy as np
 from claude_agent_sdk import create_sdk_mcp_server, tool
 
 from ..ect import detect, process, render, scan as sc
-from . import images, memory
+from . import images, memory, python_tool
+from .sysmem import free_commit_mb
 
 RENDER_LOCK = threading.Lock()          # pyplot is not thread-safe: one figure at a time
 MAX_COMPARE = 8
+MAX_PREVIEWS = 3                         # figure previews returned to the model per tool call
 
 LABELS = {                               # shown in the chat while a tool runs
     "list_scans": "Tra danh mục file quét",
@@ -32,6 +35,7 @@ LABELS = {                               # shown in the chat while a tool runs
     "remember": "Ghi nhớ",
     "recall": "Tra bộ nhớ",
     "forget": "Xóa khỏi bộ nhớ",
+    "run_python": "Phân tích bằng Python",
 }
 
 VIEW_KEYS = sorted(render.VIEWS) + ["report", "model_input"]
@@ -111,15 +115,21 @@ async def _run(ctx, name, fn, args):
         with open(LOG_DIR / "tool_errors.log", "a", encoding="utf-8") as f:
             f.write(f"--- {name} {json.dumps(args, ensure_ascii=False)}\n{traceback.format_exc()}\n")
         return _error(f"{type(e).__name__}: {e}")
-    content = [_text(out["text"])]
+    figs = out.get("figures") or []
     if out.get("png"):
-        meta = images.save(out["png"], out.get("title", LABELS[name]), out.get("caption", ""),
-                           scan=out.get("scan"), tool=name, session=ctx.session_id)
+        figs = [{"png": out["png"], "title": out.get("title", LABELS[name]), "caption": out.get("caption", "")}]
+    shown, previews = [], []
+    for f in figs:
+        meta = images.save(f["png"], f["title"], f.get("caption", ""), scan=out.get("scan"), tool=name,
+                           session=ctx.session_id)
         ctx.state["last_image"] = meta["id"]
         await ctx.emit("image", meta)
-        content[0] = _text(out["text"] + f"\n[Hình đã hiển thị ở khung bên phải: {meta['title']} (id {meta['id']})]")
-        prev = await asyncio.to_thread(render.preview, out["png"])
-        content.append({"type": "image", "data": base64.b64encode(prev).decode(), "mimeType": "image/png"})
+        shown.append(f"{meta['title']} (id {meta['id']})")
+        if len(previews) < MAX_PREVIEWS:
+            prev = await asyncio.to_thread(render.preview, f["png"])
+            previews.append({"type": "image", "data": base64.b64encode(prev).decode(), "mimeType": "image/png"})
+    content = [_text(out["text"] + (f"\n[Hình đã hiển thị ở khung bên phải: {'; '.join(shown)}]" if shown else ""))]
+    content += previews
     if out.get("scan"):
         memory.touch_scan(out["scan"])
         ctx.state["last_scan"] = out["scan"]
@@ -408,6 +418,20 @@ def _profile_line(ctx, a):
             "png": data, "title": f"{scan_label(meta)} — lát cắt", "scan": sid, "caption": view}
 
 
+def _run_python(ctx, a):
+    free = free_commit_mb()
+    if free is not None and free < python_tool.MIN_FREE_MB:
+        raise ValueError(f"máy chỉ còn {free} MB bộ nhớ trống, chưa đủ để chạy Python (cần ~{python_tool.MIN_FREE_MB} MB). "
+                         "Hãy dùng các công cụ có sẵn, hoặc nhờ người dùng đóng bớt chương trình.")
+    chat = {k: ctx.state.get(k) for k in ("crop", "enhance", "last_scan", "detections")}
+    out, figs, secs, timed_out = python_tool.run(a["code"], ctx.session_id, chat)
+    work = python_tool.work_dir(ctx.session_id)
+    figures = [{"png": (work / f["file"]).read_bytes(), "title": f["title"], "caption": f.get("caption", "")}
+               for f in figs if (work / f["file"]).exists()]
+    head = f"run_python ({secs:.1f} s{', HẾT GIỜ' if timed_out else ''}). Thư mục làm việc: {work}\n"
+    return {"text": head + out, "figures": figures, "scan": ctx.state.get("last_scan")}
+
+
 def _remember(ctx, a):
     it = memory.add(a["text"], a.get("kind") or "note")
     return {"text": f"Đã ghi nhớ [{it['id']}, {it['kind']}]: {it['text']}"}
@@ -495,6 +519,24 @@ SPECS = [
     ("forget", "Delete one memory item by id (e.g. m3).",
      {"type": "object", "properties": {"id": S}, "required": ["id"]}, _forget),
 ]
+
+if python_tool.ENABLED:
+    SPECS.append(
+        ("run_python", "Run your own Python for analysis the other tools cannot do: statistics over many scans, "
+         "custom filters, FFT, histograms, correlations, any custom plot. Runs in a separate process (timeout "
+         f"{python_tool.TIMEOUT_S} s, ~5 s start-up). Preloaded: np, scipy, ndimage, signal, stats, plt, the ect "
+         "modules sc / process / detect / render, and helpers: load(scan) -> (grid, meta); stages(scan, crop=None) "
+         "-> dict raw/filtered/cropped/detrended/dx/zmap/margins/offset (crop None = this chat's choice); "
+         "yolo(scan, conf=0.5) and threshold(scan, z=2.5) -> boxes {x0,y0,x1,y1,...} in original grid px; "
+         "labels(scan); catalog(); show(fig, title, caption) puts a matplotlib figure on the right panel "
+         "(Vietnamese title). print() what you need to read back. The working directory is this chat's work "
+         "folder: files can be written only there (kept for the chat); data/ and labels are read-only; no "
+         "network, no subprocesses. Load skill phan-tich-python before the first use.",
+         {"type": "object", "properties": {
+             "code": {"type": "string", "description": "Python source to run"},
+             "purpose": {"type": "string", "description": "one short Vietnamese line shown to the user, e.g. "
+                                                          "'so sánh độ nổi bật vết nứt theo tần số'"}},
+          "required": ["code", "purpose"]}, _run_python))
 
 TOOL_NAMES = [s[0] for s in SPECS]
 SERVER_NAME = "ect"

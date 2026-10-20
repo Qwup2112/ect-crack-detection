@@ -9,11 +9,19 @@ scipy>=1.10
 matplotlib>=3.7
 pillow>=10
 
-# Crack detection model (YOLO11n weights in results/model/). Large: pulls in PyTorch.
+# Crack detection: the app runs YOLO11n on onnxruntime (results/model/crack_yolo.onnx), light
+# on memory; opencv resizes exactly like ultralytics.
+onnxruntime>=1.24
+opencv-python>=4.8
+# Training and exporting the model only (app/tools/export_onnx.py). Large: pulls in PyTorch.
 ultralytics>=8.3
+onnx>=1.17
 
 # Web backend + chat agent. The agent is the Claude Code harness as a library and runs on
 # this PC's Claude Code login - no API key.
 fastapi>=0.115
 uvicorn[standard]>=0.30
 claude-agent-sdk>=0.2
+
+# Desktop window (WebView2, ships with Windows 11) - the app is a program, not a web page
+pywebview>=6.2

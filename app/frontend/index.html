@@ -1,56 +1,1325 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="vi">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>ECT Crack Chat</title>
-  <link rel="stylesheet" href="/static/styles.css">
+  <meta name="description" content="Giao diện trợ lý trò chuyện và trực quan hóa bản đồ nhiệt quét vết nứt dòng xoáy Eddy-Current Testing (ECT)">
+  <meta property="og:title" content="ECT Crack Chat">
+  <meta property="og:description" content="Trực quan hóa bản đồ nhiệt quét vết nứt dòng xoáy ECT">
+  <meta property="og:type" content="website">
+
+  <style>
+    /* CSS Reset & System Typography */
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    :root {
+      --bg-dark-0: #0a0d12;
+      --bg-dark-1: #10151d;
+      --bg-dark-2: #161c26;
+      --bg-dark-3: #1f2735;
+      --border-subtle: #242e3f;
+      --border-highlight: #3a475d;
+      
+      --copper-100: #faebe3;
+      --copper-200: #f2cbba;
+      --copper-300: #e5a489;
+      --copper-400: #d7825e;
+      --copper-500: #c87d55;
+      --copper-600: #b86a3d;
+      --copper-700: #964f26;
+      --copper-800: #773c1c;
+
+      --text-main: #f1f5f9;
+      --text-muted: #94a3b8;
+      --text-dim: #64748b;
+
+      --status-green: #22c55e;
+      --status-amber: #f59e0b;
+      --status-red: #ef4444;
+
+      --font-stack: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      height: 100dvh;
+      overflow: hidden;
+      font-family: var(--font-stack);
+      background: var(--bg-dark-0);
+      color: var(--text-main);
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Full Window Layout: 2 Columns */
+    .app-container {
+      display: flex;
+      width: 100vw;
+      height: 100vh;
+      height: 100dvh;
+      overflow: hidden;
+    }
+
+    /* LEFT Column: 40% (min 360px) */
+    .left-column {
+      flex: 0 0 40%;
+      min-width: 360px;
+      max-width: 40%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      background: var(--bg-dark-1);
+      border-right: 1px solid var(--border-subtle);
+      position: relative;
+    }
+
+    /* RIGHT Column: 60% */
+    .right-column {
+      flex: 1 1 60%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      background: var(--bg-dark-0);
+      overflow: hidden;
+    }
+
+    /* Responsive: under 900px stack left above right */
+    @media (max-width: 900px) {
+      .app-container {
+        flex-direction: column;
+      }
+      .left-column {
+        flex: 0 0 54%;
+        max-width: 100%;
+        min-width: 100%;
+        border-right: none;
+        border-bottom: 1px solid var(--border-subtle);
+      }
+      .right-column {
+        flex: 0 0 46%;
+        width: 100%;
+      }
+    }
+
+    /* LEFT COLUMN: 1. Top Bar */
+    .left-top-bar {
+      height: 56px;
+      min-height: 56px;
+      padding: 0 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--border-subtle);
+      background: var(--bg-dark-1);
+      z-index: 10;
+    }
+
+    .brand-section {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .coil-logo {
+      width: 30px;
+      height: 30px;
+      display: block;
+      filter: drop-shadow(0 2px 4px rgba(200, 125, 85, 0.3));
+    }
+
+    .app-title {
+      font-size: 16px;
+      font-weight: 700;
+      color: #ffffff;
+      letter-spacing: -0.01em;
+      white-space: nowrap;
+    }
+
+    .status-group {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    /* Status Dot with Tooltip */
+    .status-dot-container {
+      position: relative;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      cursor: help;
+      padding: 4px 6px;
+      border-radius: 6px;
+      transition: background 0.15s ease;
+    }
+
+    .status-dot-container:hover {
+      background: rgba(255, 255, 255, 0.05);
+    }
+
+    .status-dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      display: inline-block;
+      transition: background-color 0.3s ease, box-shadow 0.3s ease;
+    }
+
+    .status-dot.green {
+      background-color: var(--status-green);
+      box-shadow: 0 0 8px rgba(34, 197, 94, 0.6);
+    }
+
+    .status-dot.amber {
+      background-color: var(--status-amber);
+      box-shadow: 0 0 10px rgba(245, 158, 11, 0.8);
+      animation: amberPulse 1.2s infinite ease-in-out;
+    }
+
+    .status-dot.red {
+      background-color: var(--status-red);
+      box-shadow: 0 0 8px rgba(239, 68, 68, 0.6);
+    }
+
+    @keyframes amberPulse {
+      0%, 100% {
+        opacity: 1;
+        transform: scale(1);
+      }
+      50% {
+        opacity: 0.35;
+        transform: scale(1.25);
+      }
+    }
+
+    .status-tooltip {
+      position: absolute;
+      top: 100%;
+      left: 50%;
+      transform: translateX(-50%) translateY(6px);
+      background: #000000;
+      border: 1px solid var(--border-highlight);
+      color: #e2e8f0;
+      padding: 6px 10px;
+      font-size: 11px;
+      white-space: nowrap;
+      border-radius: 6px;
+      pointer-events: none;
+      opacity: 0;
+      visibility: hidden;
+      transition: opacity 0.2s, transform 0.2s;
+      z-index: 50;
+      box-shadow: 0 4px 14px rgba(0,0,0,0.5);
+    }
+
+    .status-dot-container:hover .status-tooltip {
+      opacity: 1;
+      visibility: visible;
+      transform: translateX(-50%) translateY(2px);
+    }
+
+    /* Cuộc chat mới Button */
+    .btn-new-chat {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: transparent;
+      border: 1px solid var(--border-highlight);
+      color: #cbd5e1;
+      padding: 6px 12px;
+      font-size: 12px;
+      font-weight: 500;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      font-family: inherit;
+    }
+
+    .btn-new-chat:hover {
+      background: var(--bg-dark-3);
+      border-color: var(--copper-500);
+      color: #ffffff;
+    }
+
+    .btn-new-chat svg {
+      width: 14px;
+      height: 14px;
+      stroke: currentColor;
+    }
+
+    /* LEFT COLUMN: 2. Message List */
+    .message-list {
+      flex: 1 1 auto;
+      overflow-y: auto;
+      overflow-x: hidden;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      scroll-behavior: smooth;
+    }
+
+    /* Scrollbar styling */
+    .message-list::-webkit-scrollbar,
+    .right-stage-wrapper::-webkit-scrollbar,
+    .filmstrip::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    .message-list::-webkit-scrollbar-thumb,
+    .right-stage-wrapper::-webkit-scrollbar-thumb,
+    .filmstrip::-webkit-scrollbar-thumb {
+      background: var(--border-highlight);
+      border-radius: 3px;
+    }
+    .message-list::-webkit-scrollbar-track,
+    .right-stage-wrapper::-webkit-scrollbar-track,
+    .filmstrip::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    /* Empty state */
+    .empty-state {
+      margin: auto 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      padding: 24px 12px;
+    }
+
+    .empty-state-icon {
+      margin-bottom: 16px;
+      opacity: 0.9;
+    }
+
+    .empty-state-heading {
+      font-size: 17px;
+      font-weight: 600;
+      color: #ffffff;
+      margin-bottom: 6px;
+    }
+
+    .empty-state-desc {
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-bottom: 22px;
+      max-width: 340px;
+    }
+
+    .suggestion-chips-grid {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      width: 100%;
+      max-width: 360px;
+    }
+
+    .suggestion-chip {
+      background: var(--bg-dark-2);
+      border: 1px solid var(--border-subtle);
+      color: #e2e8f0;
+      padding: 9px 13px;
+      border-radius: 8px;
+      font-size: 13px;
+      text-align: left;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-family: inherit;
+    }
+
+    .suggestion-chip:hover {
+      background: var(--bg-dark-3);
+      border-color: var(--copper-500);
+      color: #ffffff;
+      transform: translateY(-1px);
+    }
+
+    .suggestion-chip .arrow {
+      color: var(--copper-400);
+      font-size: 14px;
+      opacity: 0.8;
+    }
+
+    /* User Message Bubble: Copper right-aligned */
+    .msg-user {
+      align-self: flex-end;
+      max-width: 84%;
+      background: linear-gradient(135deg, var(--copper-500) 0%, var(--copper-700) 100%);
+      color: #ffffff;
+      padding: 10px 14px;
+      border-radius: 14px 14px 2px 14px;
+      font-size: 14px;
+      line-height: 1.45;
+      word-break: break-word;
+      box-shadow: 0 2px 10px rgba(184, 106, 61, 0.25);
+    }
+
+    /* Assistant Message Bubble: Dark left-aligned */
+    .msg-assistant {
+      align-self: flex-start;
+      max-width: 92%;
+      background: var(--bg-dark-2);
+      border: 1px solid var(--border-subtle);
+      color: #e2e8f0;
+      padding: 12px 15px;
+      border-radius: 14px 14px 14px 2px;
+      font-size: 14px;
+      line-height: 1.55;
+      word-break: break-word;
+      box-shadow: 0 3px 12px rgba(0, 0, 0, 0.25);
+    }
+
+    .msg-assistant .md-p {
+      margin-bottom: 8px;
+    }
+    .msg-assistant .md-p:last-child {
+      margin-bottom: 0;
+    }
+
+    .msg-assistant .md-ul, 
+    .msg-assistant .md-ol {
+      margin: 8px 0;
+      padding-left: 20px;
+    }
+
+    .msg-assistant .md-ul li,
+    .msg-assistant .md-ol li {
+      margin-bottom: 4px;
+    }
+
+    .msg-assistant strong {
+      color: #ffffff;
+      font-weight: 600;
+    }
+
+    .msg-assistant .inline-code {
+      font-family: var(--font-mono);
+      background: rgba(0, 0, 0, 0.35);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      padding: 2px 5px;
+      border-radius: 4px;
+      font-size: 12.5px;
+      color: #fca5a5;
+    }
+
+    /* Tool Chips between messages */
+    .tool-chip {
+      align-self: flex-start;
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 4px 10px;
+      border-radius: 9999px;
+      font-size: 12px;
+      background: #141922;
+      border: 1px solid var(--border-subtle);
+      color: var(--text-muted);
+      margin: 2px 0;
+      transition: all 0.2s ease;
+    }
+
+    .tool-chip .tool-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .tool-chip.running .tool-dot {
+      background: var(--copper-400);
+      animation: amberPulse 1.1s infinite;
+    }
+    .tool-chip.running {
+      border-color: rgba(200, 125, 85, 0.4);
+      color: #fed7aa;
+    }
+
+    .tool-chip.done .tool-dot {
+      background: var(--status-green);
+    }
+    .tool-chip.done {
+      border-color: rgba(34, 197, 94, 0.3);
+      color: #cbd5e1;
+    }
+    .tool-chip.done .tool-duration {
+      color: var(--status-green);
+      font-family: var(--font-mono);
+      font-size: 11px;
+    }
+
+    .tool-chip.error .tool-dot {
+      background: var(--status-red);
+    }
+    .tool-chip.error {
+      border-color: rgba(239, 68, 68, 0.4);
+      color: #fca5a5;
+    }
+
+    /* Image Chip in chat: "🖼 <title>" */
+    .image-chip {
+      align-self: flex-start;
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 6px 12px;
+      background: #182230;
+      border: 1px solid rgba(200, 125, 85, 0.4);
+      border-radius: 8px;
+      font-size: 12.5px;
+      font-weight: 500;
+      color: #ffedd5;
+      cursor: pointer;
+      margin: 3px 0;
+      transition: all 0.15s ease;
+      font-family: inherit;
+    }
+
+    .image-chip:hover {
+      background: #202d40;
+      border-color: var(--copper-400);
+      transform: translateY(-1px);
+      box-shadow: 0 3px 10px rgba(200, 125, 85, 0.2);
+    }
+
+    .image-chip .img-icon {
+      font-size: 14px;
+    }
+
+    /* LEFT COLUMN: 3. Composer */
+    .composer-area {
+      padding: 12px 16px 16px;
+      border-top: 1px solid var(--border-subtle);
+      background: var(--bg-dark-1);
+    }
+
+    .composer-box {
+      display: flex;
+      align-items: flex-end;
+      gap: 8px;
+      background: var(--bg-dark-2);
+      border: 1px solid var(--border-subtle);
+      border-radius: 10px;
+      padding: 8px 10px;
+      transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .composer-box:focus-within {
+      border-color: var(--copper-500);
+      box-shadow: 0 0 0 2px rgba(200, 125, 85, 0.2);
+    }
+
+    .composer-textarea {
+      flex: 1;
+      background: transparent;
+      border: none;
+      outline: none;
+      color: #ffffff;
+      font-size: 14px;
+      font-family: inherit;
+      line-height: 1.45;
+      resize: none;
+      min-height: 22px;
+      max-height: 130px;
+      overflow-y: auto;
+    }
+
+    .composer-textarea::placeholder {
+      color: var(--text-dim);
+      font-size: 13px;
+    }
+
+    .btn-action {
+      background: var(--copper-600);
+      color: #ffffff;
+      border: none;
+      padding: 6px 14px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      transition: all 0.15s ease;
+      font-family: inherit;
+      white-space: nowrap;
+      height: 32px;
+    }
+
+    .btn-action:hover:not(:disabled) {
+      background: var(--copper-500);
+    }
+
+    .btn-action:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+
+    .btn-action.btn-abort {
+      background: #b91c1c;
+    }
+
+    .btn-action.btn-abort:hover {
+      background: #dc2626;
+    }
+
+    /* RIGHT COLUMN: 1. Top Bar */
+    .right-top-bar {
+      height: 56px;
+      min-height: 56px;
+      padding: 0 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--border-subtle);
+      background: var(--bg-dark-0);
+      z-index: 10;
+    }
+
+    .right-title-container {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+      flex: 1;
+      padding-right: 16px;
+    }
+
+    .right-image-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: #e2e8f0;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .link-open-original {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 13px;
+      color: var(--copper-400);
+      text-decoration: none;
+      padding: 5px 10px;
+      border-radius: 6px;
+      transition: all 0.15s ease;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    .link-open-original:hover {
+      background: rgba(200, 125, 85, 0.12);
+      color: #ffedd5;
+    }
+
+    .link-open-original.disabled {
+      opacity: 0.35;
+      pointer-events: none;
+    }
+
+    /* RIGHT COLUMN: 2. Stage Area */
+    .right-stage-wrapper {
+      flex: 1 1 auto;
+      overflow: auto;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      background: radial-gradient(circle at center, #111620 0%, #080a0e 100%);
+      position: relative;
+    }
+
+    /* White rounded card with soft shadow */
+    .stage-card {
+      background: #ffffff;
+      border-radius: 12px;
+      box-shadow: 0 14px 40px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.08);
+      padding: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      max-width: 100%;
+      max-height: 100%;
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+      cursor: zoom-in;
+      user-select: none;
+    }
+
+    /* Stage image fitting */
+    .stage-image {
+      display: block;
+      max-width: 100%;
+      max-height: calc(100vh - 230px);
+      object-fit: contain;
+      border-radius: 6px;
+      pointer-events: none;
+    }
+
+    /* Zoomed state: 100% actual size with scrolling */
+    .stage-card.zoomed {
+      cursor: zoom-out;
+      max-width: none;
+      max-height: none;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.85);
+      margin: auto;
+    }
+
+    .stage-card.zoomed .stage-image {
+      max-width: none;
+      max-height: none;
+    }
+
+    /* Dashed placeholder when no image */
+    .stage-placeholder {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      border: 2px dashed #2a3547;
+      border-radius: 14px;
+      padding: 48px 36px;
+      text-align: center;
+      color: var(--text-dim);
+      max-width: 440px;
+      width: 90%;
+      background: rgba(16, 21, 29, 0.4);
+    }
+
+    .placeholder-coil-icon {
+      margin-bottom: 14px;
+      opacity: 0.4;
+    }
+
+    .placeholder-text {
+      font-size: 14px;
+      color: var(--text-muted);
+      line-height: 1.5;
+    }
+
+    /* RIGHT COLUMN: 3. Caption Line */
+    .caption-bar {
+      padding: 6px 20px 8px;
+      font-size: 12px;
+      color: var(--text-dim);
+      background: var(--bg-dark-0);
+      border-top: 1px solid rgba(255, 255, 255, 0.03);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      min-height: 30px;
+      display: flex;
+      align-items: center;
+    }
+
+    /* RIGHT COLUMN: 4. Filmstrip */
+    .filmstrip {
+      height: 82px;
+      min-height: 82px;
+      padding: 9px 16px;
+      display: flex;
+      gap: 10px;
+      overflow-x: auto;
+      overflow-y: hidden;
+      background: var(--bg-dark-1);
+      border-top: 1px solid var(--border-subtle);
+      align-items: center;
+    }
+
+    .filmstrip-empty-text {
+      font-size: 12px;
+      color: var(--text-dim);
+      margin: auto;
+      font-style: italic;
+    }
+
+    .filmstrip-item {
+      height: 64px;
+      width: 64px;
+      min-width: 64px;
+      border-radius: 6px;
+      overflow: hidden;
+      cursor: pointer;
+      background: #000000;
+      border: 2px solid transparent;
+      transition: all 0.15s ease;
+      position: relative;
+    }
+
+    .filmstrip-item:hover {
+      border-color: var(--copper-400);
+      transform: translateY(-2px);
+    }
+
+    .filmstrip-item.active {
+      border-color: var(--copper-500);
+      box-shadow: 0 0 0 2px rgba(200, 125, 85, 0.4), 0 3px 8px rgba(0, 0, 0, 0.5);
+    }
+
+    .filmstrip-thumb {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+    /* Error bubble (added: backend / agent errors are shown, never simulated) */
+    .msg-error {
+      align-self: flex-start;
+      max-width: 92%;
+      background: rgba(239, 68, 68, 0.08);
+      border: 1px solid rgba(239, 68, 68, 0.45);
+      color: #fecaca;
+      padding: 10px 14px;
+      border-radius: 14px 14px 14px 2px;
+      font-size: 13.5px;
+      line-height: 1.5;
+      word-break: break-word;
+    }
+  </style>
 </head>
 <body>
-  <main class="app">
-    <!-- LEFT: chat + replies -->
-    <section class="chat" aria-label="Trò chuyện">
-      <header class="bar">
-        <div class="brand"><span class="coil" aria-hidden="true"></span>ECT Crack Chat</div>
-        <div class="bar-right">
-          <span id="status" class="status" title="Trạng thái">●</span>
-          <button id="newChat" class="ghost" type="button">Cuộc chat mới</button>
+  <div class="app-container">
+    <!-- LEFT COLUMN: Chat & Assistant -->
+    <section class="left-column" aria-label="Khu vực hội thoại">
+      <!-- 1. Top Bar -->
+      <header class="left-top-bar">
+        <div class="brand-section">
+          <!-- Logo: Three concentric copper rings (Eddy-current coil) -->
+          <svg class="coil-logo" viewBox="0 0 36 36" aria-hidden="true">
+            <defs>
+              <linearGradient id="copperGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#faebe3"/>
+                <stop offset="35%" stop-color="#d7825e"/>
+                <stop offset="70%" stop-color="#b86a3d"/>
+                <stop offset="100%" stop-color="#773c1c"/>
+              </linearGradient>
+            </defs>
+            <!-- Background subtle field -->
+            <circle cx="18" cy="18" r="17" fill="none" stroke="rgba(200, 125, 85, 0.15)" stroke-width="1" />
+            <!-- Concentric Ring 3 (Outer) -->
+            <circle cx="18" cy="18" r="14" fill="none" stroke="url(#copperGrad)" stroke-width="2.2" stroke-dasharray="87 2" />
+            <!-- Concentric Ring 2 (Middle) -->
+            <circle cx="18" cy="18" r="9.5" fill="none" stroke="url(#copperGrad)" stroke-width="2.2" />
+            <!-- Concentric Ring 1 (Inner) -->
+            <circle cx="18" cy="18" r="5" fill="none" stroke="url(#copperGrad)" stroke-width="2.2" />
+            <!-- Center core dot -->
+            <circle cx="18" cy="18" r="1.8" fill="#ffedd5" />
+          </svg>
+          <span class="app-title">ECT Crack Chat</span>
+        </div>
+
+        <div class="status-group">
+          <!-- Status Dot with Tooltip -->
+          <div class="status-dot-container" id="status-container" tabindex="0">
+            <span class="status-dot green" id="status-dot"></span>
+            <span class="status-tooltip" id="status-tooltip">Backend sẵn sàng</span>
+          </div>
+
+          <!-- Cuộc chat mới Button -->
+          <button class="btn-new-chat" id="btn-new-chat" title="Xóa hội thoại và bắt đầu lại">
+            <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 5v14M5 12h14"/>
+            </svg>
+            Cuộc chat mới
+          </button>
         </div>
       </header>
 
-      <div id="messages" class="messages" aria-live="polite">
-        <div id="empty" class="empty">
-          <h1>Hỏi hoặc ra lệnh vẽ</h1>
-          <p>Ví dụ:</p>
-          <div class="suggestions">
-            <button type="button">Có những file quét nào?</button>
-            <button type="button">Vẽ bản đồ nhiệt file R 1.7V 300k</button>
-            <button type="button">Cắt viền tự động file R 1.7V 300k</button>
-            <button type="button">Bật tông file cam_4lop_1 R 4V 10k cho vết nứt rõ hơn</button>
-            <button type="button">Nhận diện vết nứt file R 1.7V 300k</button>
-            <button type="button">So sánh R và P của cambien 1.3V 200k 145x95</button>
-          </div>
+      <!-- 2. Message List -->
+      <main class="message-list" id="message-list" aria-live="polite">
+        <!-- Rendered dynamically -->
+      </main>
+
+      <!-- 3. Composer -->
+      <footer class="composer-area">
+        <form class="composer-box" id="composer-form">
+          <textarea
+            class="composer-textarea"
+            id="composer-input"
+            rows="1"
+            placeholder="Nhập câu hỏi hoặc lệnh vẽ… (Enter để gửi, Shift+Enter xuống dòng)"
+            aria-label="Nội dung lệnh hoặc câu hỏi"
+          ></textarea>
+          <button type="submit" class="btn-action" id="btn-submit">
+            Gửi
+          </button>
+        </form>
+      </footer>
+    </section>
+
+    <!-- RIGHT COLUMN: Image Results -->
+    <section class="right-column" aria-label="Kết quả trực quan bản đồ quét ECT">
+      <!-- 1. Top Bar -->
+      <header class="right-top-bar">
+        <div class="right-title-container">
+          <span class="right-image-title" id="stage-title">Chưa có ảnh được chọn</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <a href="#" class="link-open-original disabled" id="btn-download-image" download="ect_scan.png" title="Tải ảnh PNG về máy">
+            Tải ảnh
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="7 10 12 15 17 10"></polyline>
+              <line x1="12" y1="15" x2="12" y2="3"></line>
+            </svg>
+          </a>
+          <a href="#" class="link-open-original disabled" id="link-open-original" target="_blank" rel="noopener noreferrer">
+            Mở ảnh gốc
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+              <polyline points="15 3 21 3 21 9"></polyline>
+              <line x1="10" y1="14" x2="21" y2="3"></line>
+            </svg>
+          </a>
+        </div>
+      </header>
+
+      <!-- 2. Stage -->
+      <div class="right-stage-wrapper" id="stage-wrapper">
+        <div class="stage-card" id="stage-card" style="display: none;" title="Bấm để phóng to 100% / Thu nhỏ">
+          <img src="" alt="" class="stage-image" id="stage-image">
+        </div>
+
+        <div class="stage-placeholder" id="stage-placeholder">
+          <svg class="placeholder-coil-icon" width="48" height="48" viewBox="0 0 36 36">
+            <circle cx="18" cy="18" r="14" fill="none" stroke="#475569" stroke-width="1.8" stroke-dasharray="4 3"/>
+            <circle cx="18" cy="18" r="9.5" fill="none" stroke="#475569" stroke-width="1.8"/>
+            <circle cx="18" cy="18" r="5" fill="none" stroke="#475569" stroke-width="1.8"/>
+          </svg>
+          <p class="placeholder-text">Hình do trợ lý vẽ sẽ hiện ở đây.</p>
         </div>
       </div>
 
-      <form id="composer" class="composer">
-        <textarea id="input" rows="2" placeholder="Nhập câu hỏi hoặc lệnh vẽ… (Enter để gửi, Shift+Enter xuống dòng)"></textarea>
-        <button id="send" type="submit">Gửi</button>
-      </form>
-    </section>
+      <!-- 3. Caption Line -->
+      <div class="caption-bar" id="stage-caption"></div>
 
-    <!-- RIGHT: result images -->
-    <section class="viewer" aria-label="Kết quả hình ảnh">
-      <header class="bar"><div id="imgTitle" class="img-title">Chưa có hình</div>
-        <a id="openFull" class="ghost link" target="_blank" rel="noopener" hidden>Mở ảnh gốc</a></header>
-      <div class="stage">
-        <img id="mainImg" alt="" hidden>
-        <div id="placeholder" class="placeholder">Hình do trợ lý vẽ sẽ hiện ở đây.</div>
+      <!-- 4. Filmstrip -->
+      <div class="filmstrip" id="filmstrip" aria-label="Dải phim thu nhỏ ảnh quét">
+        <span class="filmstrip-empty-text" id="filmstrip-empty">Chưa có ảnh quét nào trong phiên chat</span>
       </div>
-      <div id="caption" class="caption"></div>
-      <div id="strip" class="strip" aria-label="Các hình trong cuộc chat"></div>
     </section>
-  </main>
-  <script src="/static/app.js"></script>
+  </div>
+
+  <script>
+    /**
+     * ECT Crack Chat - frontend of the desktop app (design from Google AI Studio).
+     * Talks to the local backend on the same origin:
+     *   POST /api/chat {message, session_id} -> Server-Sent Events:
+     *     session{id} delta{text} text{text} tool{id,name,label,status,ms} image{id,url,title,caption}
+     *     done{turns,ms,error,detail} error{message}
+     *   GET /api/health, POST /api/session/{id}/reset
+     * Inside the desktop window, window.pywebview.api opens / saves images as files.
+     * No simulated answers: every number and figure comes from the backend's tools.
+     */
+    (function () {
+      'use strict';
+
+      // State
+      let messages = []; // { role: 'user' | 'assistant' | 'error', content, tools: [{id,name,status,duration}], images: [] }
+      let gallery = [];  // { id, title, url, caption }
+      let activeImageId = null;
+      let isStreaming = false;
+      let abortController = null;
+      let sessionId = null;
+      let renderQueued = false;
+
+      // DOM
+      const messageList = document.getElementById('message-list');
+      const composerForm = document.getElementById('composer-form');
+      const composerInput = document.getElementById('composer-input');
+      const btnSubmit = document.getElementById('btn-submit');
+      const btnNewChat = document.getElementById('btn-new-chat');
+      const statusDot = document.getElementById('status-dot');
+      const statusTooltip = document.getElementById('status-tooltip');
+      const stageCard = document.getElementById('stage-card');
+      const stageImage = document.getElementById('stage-image');
+      const stagePlaceholder = document.getElementById('stage-placeholder');
+      const stageTitle = document.getElementById('stage-title');
+      const stageCaption = document.getElementById('stage-caption');
+      const linkOpenOriginal = document.getElementById('link-open-original');
+      const btnDownloadImage = document.getElementById('btn-download-image');
+      const filmstrip = document.getElementById('filmstrip');
+      const filmstripEmpty = document.getElementById('filmstrip-empty');
+
+      const SUGGESTIONS = [
+        "Có những file quét nào?",
+        "Vẽ bản đồ nhiệt file R 1.7V 300k",
+        "Cắt viền tự động file R 1.7V 300k",
+        "Bật tông file cam_4lop_1 R 4V 10k cho vết nứt rõ hơn",
+        "Nhận diện vết nứt file R 1.7V 300k",
+        "So sánh R và P của cambien 1.3V 200k 145x95"
+      ];
+
+      // ---------------------------------------------------- safe markdown
+      function escapeHtml(str) {
+        if (!str) return '';
+        return String(str)
+          .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+      }
+
+      function renderSafeMarkdown(rawText) {
+        if (!rawText) return '';
+        let escaped = escapeHtml(rawText);
+        escaped = escaped.replace(/`([^`]+)`/g, '<code class="inline-code">$1</code>');
+        escaped = escaped.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+        return escaped.split(/\n\n+/).map(block => {
+          const lines = block.trim().split('\n');
+          if (lines.length && lines.every(l => /^\s*[-*•]\s+/.test(l))) {
+            return `<ul class="md-ul">${lines.map(l => `<li>${l.replace(/^\s*[-*•]\s+/, '')}</li>`).join('')}</ul>`;
+          }
+          if (lines.length && lines.every(l => /^\s*\d+[.)]\s+/.test(l))) {
+            return `<ol class="md-ol">${lines.map(l => `<li>${l.replace(/^\s*\d+[.)]\s+/, '')}</li>`).join('')}</ol>`;
+          }
+          return `<p class="md-p">${lines.join('<br>')}</p>`;
+        }).join('');
+      }
+
+      // ---------------------------------------------------- status
+      function setStatus(status, customTip) {
+        statusDot.className = 'status-dot ' + status;
+        const tips = {
+          green: 'Sẵn sàng nhận lệnh',
+          amber: 'Đang trả lời & xử lý dữ liệu quét…',
+          red: 'Bộ xử lý chưa chạy - hãy mở lại phần mềm'
+        };
+        statusTooltip.textContent = customTip || tips[status];
+        statusDot.parentElement.setAttribute('title', statusTooltip.textContent);
+      }
+
+      async function checkBackendHealth() {
+        try {
+          const res = await fetch('/api/health', { signal: AbortSignal.timeout(2500) });
+          if (res.ok) {
+            const h = await res.json();
+            if (!isStreaming) {
+              setStatus('green', `Sẵn sàng · ${h.model} · ${h.readable}/${h.scans} file đọc được`
+                + (h.yolo_weights ? '' : ' · chưa có mô hình YOLO'));
+            }
+            return true;
+          }
+        } catch (e) { /* backend not answering */ }
+        setStatus('red');
+        return false;
+      }
+
+      // ---------------------------------------------------- rendering
+      function scheduleRender() {
+        if (renderQueued) return;
+        renderQueued = true;
+        requestAnimationFrame(() => { renderQueued = false; renderMessages(); });
+      }
+
+      function renderMessages() {
+        messageList.innerHTML = '';
+        if (messages.length === 0) {
+          const emptyDiv = document.createElement('div');
+          emptyDiv.className = 'empty-state';
+          emptyDiv.innerHTML = `
+            <div class="empty-state-icon">
+              <svg width="44" height="44" viewBox="0 0 36 36">
+                <circle cx="18" cy="18" r="14" fill="none" stroke="rgba(200, 125, 85, 0.4)" stroke-width="2"/>
+                <circle cx="18" cy="18" r="9.5" fill="none" stroke="rgba(200, 125, 85, 0.6)" stroke-width="2"/>
+                <circle cx="18" cy="18" r="5" fill="none" stroke="rgba(200, 125, 85, 0.9)" stroke-width="2"/>
+                <circle cx="18" cy="18" r="1.5" fill="#ffffff"/>
+              </svg>
+            </div>
+            <h2 class="empty-state-heading">Hỏi hoặc ra lệnh vẽ</h2>
+            <p class="empty-state-desc">Chọn câu lệnh phân tích tín hiệu quét dòng xoáy ECT bên dưới hoặc gõ trực tiếp câu hỏi.</p>
+            <div class="suggestion-chips-grid" id="suggestion-grid"></div>`;
+          const grid = emptyDiv.querySelector('#suggestion-grid');
+          SUGGESTIONS.forEach(text => {
+            const chip = document.createElement('button');
+            chip.type = 'button';
+            chip.className = 'suggestion-chip';
+            chip.innerHTML = `<span>${escapeHtml(text)}</span><span class="arrow">→</span>`;
+            chip.addEventListener('click', () => { composerInput.value = text; handleSendMessage(); });
+            grid.appendChild(chip);
+          });
+          messageList.appendChild(emptyDiv);
+          return;
+        }
+
+        messages.forEach(msg => {
+          if (msg.role === 'user') {
+            const el = document.createElement('div');
+            el.className = 'msg-user';
+            el.textContent = msg.content;
+            messageList.appendChild(el);
+          } else if (msg.role === 'error') {
+            const el = document.createElement('div');
+            el.className = 'msg-error';
+            el.textContent = msg.content;
+            messageList.appendChild(el);
+          } else {
+            (msg.tools || []).forEach(tool => {
+              const chip = document.createElement('div');
+              chip.className = `tool-chip ${tool.status}`;
+              let meta = '…';
+              if (tool.status === 'done') meta = tool.duration ? ` <span class="tool-duration">· ${tool.duration} s</span>` : '';
+              else if (tool.status === 'error') meta = ` <span style="color:#ef4444">— lỗi</span>`;
+              chip.innerHTML = `<span class="tool-dot"></span><span>${escapeHtml(tool.name)}${meta}</span>`;
+              messageList.appendChild(chip);
+            });
+            if (msg.content) {
+              const el = document.createElement('div');
+              el.className = 'msg-assistant';
+              el.innerHTML = renderSafeMarkdown(msg.content);
+              messageList.appendChild(el);
+            }
+            (msg.images || []).forEach(img => {
+              const b = document.createElement('button');
+              b.type = 'button';
+              b.className = 'image-chip';
+              b.innerHTML = `<span class="img-icon">🖼</span> <span>${escapeHtml(img.title)}</span>`;
+              b.addEventListener('click', () => displayImage(img.id));
+              messageList.appendChild(b);
+            });
+          }
+        });
+        messageList.scrollTop = messageList.scrollHeight;
+      }
+
+      // ---------------------------------------------------- right column
+      function displayImage(imageId) {
+        const item = gallery.find(g => g.id === imageId);
+        if (!item) return;
+        activeImageId = imageId;
+        stageTitle.textContent = item.title;
+        stageTitle.setAttribute('title', item.title);
+        stageCaption.textContent = item.caption || '';
+        stageCaption.setAttribute('title', item.caption || '');
+        stageImage.src = item.url;
+        stageImage.alt = item.title;
+        stagePlaceholder.style.display = 'none';
+        stageCard.style.display = 'flex';
+        stageCard.classList.remove('zoomed');
+        linkOpenOriginal.href = item.url;
+        linkOpenOriginal.classList.remove('disabled');
+        btnDownloadImage.href = item.url;
+        btnDownloadImage.download = item.id + '.png';
+        btnDownloadImage.classList.remove('disabled');
+        renderFilmstrip();
+      }
+
+      function addImageToGallery(img) {
+        const i = gallery.findIndex(g => g.id === img.id);
+        if (i >= 0) gallery[i] = img; else gallery.push(img);
+        displayImage(img.id);
+      }
+
+      function renderFilmstrip() {
+        filmstrip.innerHTML = '';
+        if (gallery.length === 0) {
+          filmstripEmpty.style.display = 'block';
+          filmstrip.appendChild(filmstripEmpty);
+          return;
+        }
+        filmstripEmpty.style.display = 'none';
+        gallery.forEach(item => {
+          const card = document.createElement('div');
+          card.className = 'filmstrip-item' + (item.id === activeImageId ? ' active' : '');
+          card.title = item.title;
+          card.innerHTML = `<img src="${escapeHtml(item.url)}" alt="${escapeHtml(item.title)}" class="filmstrip-thumb">`;
+          card.addEventListener('click', () => displayImage(item.id));
+          filmstrip.appendChild(card);
+        });
+        filmstrip.scrollLeft = filmstrip.scrollWidth;
+      }
+
+      stageCard.addEventListener('click', () => stageCard.classList.toggle('zoomed'));
+
+      // Desktop window: open the PNG in the Windows image viewer / save it with a dialog.
+      const desktopApi = () => (window.pywebview && window.pywebview.api) || null;
+      linkOpenOriginal.addEventListener('click', (e) => {
+        const api = desktopApi();
+        if (api && activeImageId) { e.preventDefault(); api.open_image(activeImageId); }
+      });
+      btnDownloadImage.addEventListener('click', async (e) => {
+        const api = desktopApi();
+        if (!api || !activeImageId) return;
+        e.preventDefault();
+        const r = await api.save_image(activeImageId);
+        if (r && r.saved) stageCaption.textContent = 'Đã lưu: ' + r.saved;
+        else if (r && r.error) stageCaption.textContent = 'Không lưu được: ' + r.error;
+      });
+
+      // ---------------------------------------------------- backend stream
+      function handleEvent(msg, kind, ev) {
+        switch (kind) {
+          case 'session':
+            sessionId = ev.id;
+            break;
+          case 'delta':
+          case 'text':
+            msg.content += ev.text || '';
+            break;
+          case 'tool':
+            if (ev.status === 'start') {
+              if (msg.content && !/\n\s*$/.test(msg.content)) msg.content += '\n\n';
+              msg.tools.push({ id: ev.id, name: ev.label || ev.name, status: 'running', duration: '' });
+            } else {
+              const t = msg.tools.find(x => x.id === ev.id);
+              if (t) {
+                t.status = ev.status === 'error' ? 'error' : 'done';
+                t.duration = ev.ms ? (ev.ms / 1000).toFixed(1) : '';
+              }
+            }
+            break;
+          case 'image': {
+            const img = { id: ev.id, title: ev.title || 'Hình', url: ev.url, caption: ev.caption || '' };
+            msg.images.push(img);
+            addImageToGallery(img);
+            break;
+          }
+          case 'done':
+            msg.tools.forEach(t => { if (t.status === 'running') t.status = 'done'; });
+            if (ev.error) {
+              messages.push({ role: 'error', content: 'Trợ lý dừng với lỗi: ' + ((ev.detail || []).join('; ') || 'không rõ nguyên nhân') });
+            }
+            break;
+          case 'error':
+            messages.push({ role: 'error', content: ev.message || 'Lỗi không rõ' });
+            break;
+        }
+        scheduleRender();
+      }
+
+      async function streamFromBackend(userPrompt, signal) {
+        const res = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: userPrompt, session_id: sessionId }),
+          signal
+        });
+        if (!res.ok || !res.body) throw new Error(`Bộ xử lý trả lỗi HTTP ${res.status}`);
+        const msg = { role: 'assistant', content: '', tools: [], images: [] };
+        messages.push(msg);
+        scheduleRender();
+
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder('utf-8');
+        let buffer = '';
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          let cut;
+          while ((cut = buffer.indexOf('\n\n')) >= 0) {
+            const block = buffer.slice(0, cut);
+            buffer = buffer.slice(cut + 2);
+            let kind = 'message';
+            const data = [];
+            for (const line of block.split('\n')) {
+              if (line.startsWith('event:')) kind = line.slice(6).trim();
+              else if (line.startsWith('data:')) data.push(line.slice(5).replace(/^ /, ''));
+            }
+            if (!data.length) continue;
+            let ev;
+            try { ev = JSON.parse(data.join('\n')); } catch (e) { continue; }
+            handleEvent(msg, kind, ev);
+          }
+        }
+      }
+
+      // ---------------------------------------------------- send / stop / new chat
+      async function handleSendMessage() {
+        const text = composerInput.value.trim();
+        if (!text || isStreaming) return;
+        composerInput.value = '';
+        composerInput.style.height = 'auto';
+        messages.push({ role: 'user', content: text });
+        scheduleRender();
+
+        isStreaming = true;
+        btnSubmit.textContent = 'Dừng';
+        btnSubmit.classList.add('btn-abort');
+        setStatus('amber');
+        abortController = new AbortController();
+        try {
+          if (!(await checkBackendHealth())) {
+            throw new Error('Bộ xử lý (backend) không phản hồi. Hãy đóng và mở lại phần mềm.');
+          }
+          setStatus('amber');
+          await streamFromBackend(text, abortController.signal);
+        } catch (err) {
+          if (err.name === 'AbortError') {
+            const last = messages[messages.length - 1];
+            if (last && last.role === 'assistant') {
+              last.content += '\n\n*(Đã dừng theo yêu cầu)*';
+              last.tools.forEach(t => { if (t.status === 'running') t.status = 'error'; });
+            }
+          } else {
+            messages.push({ role: 'error', content: err.message || String(err) });
+          }
+        } finally {
+          isStreaming = false;
+          btnSubmit.textContent = 'Gửi';
+          btnSubmit.classList.remove('btn-abort');
+          abortController = null;
+          scheduleRender();
+          checkBackendHealth();
+        }
+      }
+
+      composerForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+        if (isStreaming) { if (abortController) abortController.abort(); }
+        else handleSendMessage();
+      });
+
+      composerInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          if (!isStreaming) handleSendMessage();
+        }
+      });
+
+      composerInput.addEventListener('input', () => {
+        composerInput.style.height = 'auto';
+        composerInput.style.height = Math.min(composerInput.scrollHeight, 130) + 'px';
+      });
+
+      btnNewChat.addEventListener('click', () => {
+        if (isStreaming && abortController) abortController.abort();
+        if (sessionId) {
+          fetch(`/api/session/${encodeURIComponent(sessionId)}/reset`, { method: 'POST' }).catch(() => {});
+        }
+        sessionId = null;
+        messages = [];
+        gallery = [];
+        activeImageId = null;
+        stageCard.style.display = 'none';
+        stagePlaceholder.style.display = 'flex';
+        stageTitle.textContent = 'Chưa có ảnh được chọn';
+        stageCaption.textContent = '';
+        linkOpenOriginal.href = '#';
+        linkOpenOriginal.classList.add('disabled');
+        btnDownloadImage.href = '#';
+        btnDownloadImage.classList.add('disabled');
+        renderMessages();
+        renderFilmstrip();
+        composerInput.focus();
+      });
+
+      // ---------------------------------------------------- start
+      renderMessages();
+      renderFilmstrip();
+      checkBackendHealth();
+      setInterval(checkBackendHealth, 10000);
+      composerInput.focus();
+    })();
+  </script>
 </body>
 </html>

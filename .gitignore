@@ -20,6 +20,10 @@ results/*.pptx
 
 # App runtime state: generated images, long-term memory, logs (per machine)
 app/state/
+# Shortcut holds this PC's absolute paths; recreate with app/assets/make_shortcut.ps1
+*.lnk
+# Lab slides carry personal details; kept local (the repo is public)
+presentation/
 
 # TDMS index files are regenerated automatically by npTDMS from the .tdms files
 *.tdms_index

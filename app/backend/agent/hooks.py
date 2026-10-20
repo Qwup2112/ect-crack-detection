@@ -58,7 +58,10 @@ def build_hooks(ctx):
                 args["scans"] = [sc.resolve(s) for s in scans]
         except ValueError as e:
             return _deny(f"{e} Ask the user which scan they mean, or call list_scans.")
-        await ctx.emit("tool", {"id": tool_use_id, "name": short, "status": "start", "label": LABELS[short],
+        label = LABELS[short]
+        if short == "run_python" and args.get("purpose"):
+            label = f"{label}: {args['purpose']}"
+        await ctx.emit("tool", {"id": tool_use_id, "name": short, "status": "start", "label": label,
                                 "input": args})
         return {"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "allow",
                                        "updatedInput": args}}

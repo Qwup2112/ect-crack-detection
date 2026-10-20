@@ -4,6 +4,8 @@ Two detectors, used together:
   yolo      - YOLO11n fine-tuned on the labelled scans (results/model/crack_yolo.pt).
               Finds all 15 cracks per scan on both labelled sessions; still fires on pure
               noise (it never saw a crack-free scan), so cross-check weak boxes.
+              Runs on onnxruntime (crack_yolo.onnx, ~50 MB of memory) when the export is
+              there; PyTorch + ultralytics (well over 1 GB) is only the fallback.
   threshold - robust z-score on the background-removed map, fragments merged. Model-free:
               says "this deviates from the background", nothing more.
 Boxes are always returned in ORIGINAL grid pixels (before any crop), the same frame as the
@@ -18,10 +20,12 @@ import numpy as np
 from scipy import ndimage
 
 from . import process
-from .paths import LABELS_DIR, DATA_DIR, WEIGHTS, SPLIT_FILE, PROJECT_ROOT
+from .paths import LABELS_DIR, DATA_DIR, WEIGHTS, ONNX_WEIGHTS, SPLIT_FILE, PROJECT_ROOT
 
 YOLO_IMGSZ = 320          # scans are ~150 x 100 points, letterboxed to 320
 YOLO_CONF = 0.5           # 0.5 still finds 450/450 held-out cracks; cuts noise boxes 65 -> 17
+YOLO_IOU = 0.7            # NMS overlap, ultralytics' predict default
+YOLO_MAX_DET = 300
 
 
 # ---------------------------------------------------------------- labels
@@ -128,7 +132,7 @@ def model_image(grid):
 
 
 _yolo_lock = threading.Lock()
-_yolo = {}
+_yolo = {}                # backend -> (weights mtime, loaded model)
 
 
 def _device():
@@ -143,25 +147,120 @@ def _device():
 
 
 def yolo_available():
-    return WEIGHTS.exists()
+    return WEIGHTS.exists() or ONNX_WEIGHTS.exists()
 
 
-def yolo_detect(grid, conf=YOLO_CONF, drop_edge=True):
+def onnx_current():
+    """The ONNX export exists and is not older than the .pt it was made from."""
+    return ONNX_WEIGHTS.exists() and (not WEIGHTS.exists()
+                                      or ONNX_WEIGHTS.stat().st_mtime >= WEIGHTS.stat().st_mtime)
+
+
+def yolo_backend():
+    return "onnx" if onnx_current() else "torch"
+
+
+def _resize_linear(img, size_wh):
+    try:
+        import cv2                                  # what ultralytics resizes with
+        return cv2.resize(img, size_wh, interpolation=cv2.INTER_LINEAR)
+    except ImportError:
+        from PIL import Image
+        return np.asarray(Image.fromarray(img).resize(size_wh, Image.BILINEAR))
+
+
+def _letterbox(img, size=YOLO_IMGSZ, stride=32):
+    """ultralytics predict's LetterBox (rect=True -> auto): fit the long side to `size`, pad
+    the short side with 114 only up to a multiple of `stride` (150 x 101 -> 320 x 224)."""
+    h, w = img.shape[:2]
+    r = min(size / h, size / w)
+    nw, nh = round(w * r), round(h * r)
+    if (nw, nh) != (w, h):
+        img = _resize_linear(img, (nw, nh))
+    dw, dh = np.mod(size - nw, stride) / 2, np.mod(size - nh, stride) / 2
+    top, bottom, left, right = round(dh - 0.1), round(dh + 0.1), round(dw - 0.1), round(dw + 0.1)
+    out = np.full((nh + top + bottom, nw + left + right, 3), 114, np.uint8)
+    out[top:top + nh, left:left + nw] = img
+    return out
+
+
+def _nms(xyxy, scores, iou_thr):
+    order, keep = np.argsort(-scores), []
+    while order.size:
+        i, rest = order[0], order[1:]
+        keep.append(i)
+        ix = np.clip(np.minimum(xyxy[i, 2], xyxy[rest, 2]) - np.maximum(xyxy[i, 0], xyxy[rest, 0]), 0, None)
+        iy = np.clip(np.minimum(xyxy[i, 3], xyxy[rest, 3]) - np.maximum(xyxy[i, 1], xyxy[rest, 1]), 0, None)
+        inter = ix * iy
+        area = lambda b: (b[..., 2] - b[..., 0]) * (b[..., 3] - b[..., 1])
+        order = rest[inter / (area(xyxy[i]) + area(xyxy[rest]) - inter + 1e-9) <= iou_thr]
+    return np.array(keep, int)
+
+
+def _onnx_session():
+    key = ONNX_WEIGHTS.stat().st_mtime
+    if _yolo.get("onnx", (None,))[0] != key:
+        import onnxruntime as ort
+        so = ort.SessionOptions()
+        so.intra_op_num_threads, so.inter_op_num_threads = 2, 1
+        so.enable_cpu_mem_arena = False             # give memory back between calls: this PC is tight
+        _yolo["onnx"] = (key, ort.InferenceSession(str(ONNX_WEIGHTS), so, providers=["CPUExecutionProvider"]))
+    return _yolo["onnx"][1]
+
+
+def _yolo_onnx(img_rgb, conf):
+    """[(x0, y0, x1, y1, conf)] in the pixels of img_rgb, same steps as ultralytics predict."""
+    h0, w0 = img_rgb.shape[:2]
+    x = _letterbox(img_rgb).transpose(2, 0, 1)[None].astype(np.float32) / 255.0
+    h1, w1 = x.shape[2:]
+    sess = _onnx_session()
+    pred = sess.run(None, {sess.get_inputs()[0].name: x})[0][0]
+    if pred.shape[-1] == 6:                         # end-to-end head (NMS inside): x0 y0 x1 y1 conf cls
+        xyxy, scores = pred[:, :4].astype(float), pred[:, 4].astype(float)
+        keep = np.nonzero(scores > conf)[0][:YOLO_MAX_DET]
+    else:                                           # (4 + classes, anchors): cx cy w h scores...
+        pred = pred.T
+        scores = pred[:, 4:].max(axis=1).astype(float)
+        cand = scores > conf
+        cx, cy, bw, bh = pred[cand, :4].astype(float).T
+        xyxy, scores = np.column_stack([cx - bw / 2, cy - bh / 2, cx + bw / 2, cy + bh / 2]), scores[cand]
+        keep = _nms(xyxy, scores, YOLO_IOU)[:YOLO_MAX_DET] if scores.size else np.zeros(0, int)
+    xyxy, scores = xyxy[keep], scores[keep]
+    gain = min(h1 / h0, w1 / w0)                    # ultralytics ops.scale_boxes
+    pad_x = round((w1 - round(w0 * gain)) / 2 - 0.1)
+    pad_y = round((h1 - round(h0 * gain)) / 2 - 0.1)
+    xyxy = (xyxy - [pad_x, pad_y, pad_x, pad_y]) / gain
+    xyxy[:, [0, 2]] = xyxy[:, [0, 2]].clip(0, w0)
+    xyxy[:, [1, 3]] = xyxy[:, [1, 3]].clip(0, h0)
+    return [(*b, s) for b, s in zip(xyxy.tolist(), scores.tolist())]
+
+
+def _yolo_torch(img_rgb, conf):
+    key = WEIGHTS.stat().st_mtime
+    if _yolo.get("torch", (None,))[0] != key:
+        from ultralytics import YOLO
+        _yolo["torch"] = (key, (YOLO(str(WEIGHTS)), _device()))
+    model, device = _yolo["torch"][1]
+    r = model.predict(img_rgb[..., ::-1], imgsz=YOLO_IMGSZ, conf=conf, device=device,  # BGR, what the trainer read
+                      verbose=False)[0]
+    return [(*b, c) for b, c in zip(r.boxes.xyxy.tolist(), r.boxes.conf.tolist())]
+
+
+def yolo_detect(grid, conf=YOLO_CONF, drop_edge=True, backend=None):
     """Boxes [{x0,y0,x1,y1,conf}] in original grid pixels. Boxes on the scan border are the
-    plate edge, not cracks, and are dropped unless drop_edge=False."""
-    if not WEIGHTS.exists():
+    plate edge, not cracks, and are dropped unless drop_edge=False. backend: 'onnx' or
+    'torch'; default onnx when the export is current."""
+    backend = backend or yolo_backend()
+    if backend == "onnx" and not ONNX_WEIGHTS.exists():
+        raise FileNotFoundError(f"no ONNX model at {ONNX_WEIGHTS.relative_to(PROJECT_ROOT)}")
+    if backend == "torch" and not WEIGHTS.exists():
         raise FileNotFoundError(f"no trained model at {WEIGHTS.relative_to(PROJECT_ROOT)}")
     with _yolo_lock:
-        key = WEIGHTS.stat().st_mtime
-        if _yolo.get("key") != key:
-            from ultralytics import YOLO
-            _yolo.update(key=key, model=YOLO(str(WEIGHTS)), device=_device())
-        img = model_image(grid)[..., ::-1]           # RGB -> BGR, what the trainer read
-        r = _yolo["model"].predict(img, imgsz=YOLO_IMGSZ, conf=conf, device=_yolo["device"],
-                                   verbose=False)[0]
+        img = model_image(grid)
+        raw = _yolo_onnx(img, conf) if backend == "onnx" else _yolo_torch(img, conf)
     H, W = grid.shape
     out = []
-    for (x0, y0, x1, y1), c in zip(r.boxes.xyxy.tolist(), r.boxes.conf.tolist()):
+    for x0, y0, x1, y1, c in raw:
         b = {"x0": int(max(0, round(x0))), "y0": int(max(0, round(y0))),
              "x1": int(min(W, round(x1))), "y1": int(min(H, round(y1))), "conf": round(float(c), 3)}
         if drop_edge and (b["x0"] <= 0 or b["y0"] <= 0 or b["x1"] >= W or b["y1"] >= H):
