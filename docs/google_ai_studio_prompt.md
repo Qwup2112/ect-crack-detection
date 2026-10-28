@@ -41,6 +41,11 @@ LAYOUT (desktop, full window, no page scroll)
        "Detecting cracks…" - pulsing while running, green with duration ("· 2.4 s") when
        done, red with "— error" on error;
      - image chips: "🖼 <title>"; clicking one shows that image on the right.
+     - activity line under the last item while an answer runs: a small spinning coil, a
+       shimmering phrase and the elapsed time ("Thinking… · 4 s"). "Thinking…" (rotating with
+       "Reasoning…", "Pondering…") when nothing arrives, "Working…" (rotating with "Processing
+       the scan…", "Crunching the numbers…") while a tool chip is running; hidden while reply
+       text streams in and once the answer is done.
      - Empty state: heading "Ask a question or give a drawing command" and these suggestion
        chips (click = send):
        "Which scan files are there?", "Draw the heatmap of file R 1.7V 300k",

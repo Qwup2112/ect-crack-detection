@@ -80,7 +80,8 @@ writes to `data/` and `results/labels/`, and a hook runs the smoke test after ev
 
 `app/frontend/index.html` is a design made with Google AI Studio
 (prompt: [`docs/google_ai_studio_prompt.md`](docs/google_ai_studio_prompt.md)), connected to the
-backend: the answer text streams in, each tool shows its status, figures appear on the right,
+backend: the answer text streams in, an activity line says "Thinking…" or "Working…" (with the
+elapsed time) while the assistant is busy, each tool shows its status, figures appear on the right,
 "Open original" opens the image in the Windows image viewer, "Save image" opens a save dialog.
 The AI Studio version's "simulation" (fake images and invented numbers when offline) was removed:
 every figure and number comes from the real tools.

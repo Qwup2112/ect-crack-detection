@@ -786,6 +786,57 @@
       line-height: 1.5;
       word-break: break-word;
     }
+
+    /* Activity line while an answer runs: "Thinking…" / "Working…" + elapsed time */
+    .activity {
+      align-self: flex-start;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 2px 4px;
+      font-size: 13px;
+    }
+
+    .activity[hidden] {
+      display: none;
+    }
+
+    .activity-coil {
+      width: 18px;
+      height: 18px;
+      flex-shrink: 0;
+      animation: activitySpin 1.6s linear infinite;
+    }
+
+    .activity-phrase {
+      font-weight: 500;
+      background: linear-gradient(90deg, var(--copper-400) 0%, #ffedd5 50%, var(--copper-400) 100%);
+      background-size: 200% 100%;
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+      animation: activityShimmer 2.2s linear infinite;
+    }
+
+    .activity-time {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-dim);
+    }
+
+    @keyframes activitySpin {
+      to { transform: rotate(360deg); }
+    }
+
+    @keyframes activityShimmer {
+      from { background-position: 200% 0; }
+      to { background-position: 0 0; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .activity-coil, .activity-phrase { animation: none; }
+      .activity-phrase { color: var(--copper-300); background: none; }
+    }
   </style>
 </head>
 <body>
@@ -1014,6 +1065,66 @@
         return false;
       }
 
+      // ---------------------------------------------------- activity line
+      // Under the last message while an answer runs: "Thinking…" between events, "Working…"
+      // while a tool runs, hidden while reply text streams in. Phrases rotate every few seconds.
+      const THINKING = ['Thinking', 'Reasoning', 'Pondering', 'Weighing the evidence', 'Planning the next step'];
+      const WORKING = ['Working', 'Processing the scan', 'Crunching the numbers', 'Running the tools', 'Computing'];
+      const PHRASE_MS = 3000;
+      const TEXT_QUIET_MS = 900;   // no new reply text for this long: the assistant is thinking again
+
+      const activity = document.createElement('div');
+      activity.className = 'activity';
+      activity.setAttribute('role', 'status');
+      activity.hidden = true;
+      activity.innerHTML = `
+        <svg class="activity-coil" viewBox="0 0 36 36" aria-hidden="true">
+          <circle cx="18" cy="18" r="14" fill="none" stroke="#c87d55" stroke-width="2.6" stroke-dasharray="70 18"/>
+          <circle cx="18" cy="18" r="9" fill="none" stroke="#d7825e" stroke-width="2.6"/>
+          <circle cx="18" cy="18" r="4.5" fill="none" stroke="#e5a489" stroke-width="2.6"/>
+        </svg>
+        <span class="activity-phrase"></span>
+        <span class="activity-time"></span>`;
+      const activityPhrase = activity.querySelector('.activity-phrase');
+      const activityTime = activity.querySelector('.activity-time');
+      let currentMsg = null;     // the assistant message being streamed
+      let startedAt = 0, lastTextAt = 0, phase = '', phaseAt = 0, activityTimer = null;
+
+      function updateActivity() {
+        const now = Date.now();
+        let next = '';
+        if (isStreaming && !(currentMsg && currentMsg.finished)) {
+          if (currentMsg && currentMsg.tools.some(t => t.status === 'running')) next = 'working';
+          else if (now - lastTextAt >= TEXT_QUIET_MS) next = 'thinking';
+        }
+        if (next !== phase) { phase = next; phaseAt = now; }
+        const appeared = activity.hidden && !!phase;
+        activity.hidden = !phase;
+        if (!phase) return;
+        const list = phase === 'working' ? WORKING : THINKING;
+        activityPhrase.textContent = list[Math.floor((now - phaseAt) / PHRASE_MS) % list.length] + '…';
+        activityTime.textContent = `· ${Math.floor((now - startedAt) / 1000)} s`;
+        const nearBottom = messageList.scrollHeight - messageList.scrollTop - messageList.clientHeight < 80;
+        if (appeared && nearBottom) messageList.scrollTop = messageList.scrollHeight;
+      }
+
+      function startActivity() {
+        startedAt = Date.now();
+        lastTextAt = 0;
+        phase = '';
+        clearInterval(activityTimer);
+        activityTimer = setInterval(updateActivity, 250);
+        updateActivity();
+      }
+
+      function stopActivity() {
+        clearInterval(activityTimer);
+        activityTimer = null;
+        currentMsg = null;
+        phase = '';
+        activity.hidden = true;
+      }
+
       // ---------------------------------------------------- rendering
       function scheduleRender() {
         if (renderQueued) return;
@@ -1088,6 +1199,7 @@
             });
           }
         });
+        if (isStreaming) messageList.appendChild(activity);
         messageList.scrollTop = messageList.scrollHeight;
       }
 
@@ -1164,6 +1276,7 @@
           case 'delta':
           case 'text':
             msg.content += ev.text || '';
+            lastTextAt = Date.now();
             break;
           case 'tool':
             if (ev.status === 'start') {
@@ -1184,6 +1297,7 @@
             break;
           }
           case 'done':
+            msg.finished = true;
             msg.tools.forEach(t => { if (t.status === 'running') t.status = 'done'; });
             if (ev.error) {
               messages.push({ role: 'error', content: 'The assistant stopped with an error: ' + ((ev.detail || []).join('; ') || 'unknown cause') });
@@ -1206,6 +1320,7 @@
         if (!res.ok || !res.body) throw new Error(`The backend returned HTTP ${res.status}`);
         const msg = { role: 'assistant', content: '', tools: [], images: [] };
         messages.push(msg);
+        currentMsg = msg;
         scheduleRender();
 
         const reader = res.body.getReader();
@@ -1243,6 +1358,7 @@
         scheduleRender();
 
         isStreaming = true;
+        startActivity();
         btnSubmit.textContent = 'Stop';
         btnSubmit.classList.add('btn-abort');
         setStatus('amber');
@@ -1265,6 +1381,7 @@
           }
         } finally {
           isStreaming = false;
+          stopActivity();
           btnSubmit.textContent = 'Send';
           btnSubmit.classList.remove('btn-abort');
           abortController = null;
