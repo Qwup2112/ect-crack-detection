@@ -1,5 +1,5 @@
-"""Signal processing: denoising, background removal, border cropping ("cắt viền") and
-contrast enhancement ("bật tông"). Every function takes and returns plain 2D arrays.
+"""Signal processing: denoising, background removal, border cropping and contrast
+enhancement. Every function takes and returns plain 2D arrays.
 
 Defaults are the pipeline tested on the whole dataset in the legacy app:
     lpf filter (FIR down each column + 3 px median)  -> removes the scan sawtooth
@@ -120,11 +120,11 @@ def margins_for(img, crop="auto", z_thresh=3.0):
 
 def describe_margins(m):
     if not any(m.values()):
-        return "không cắt viền"
-    return f"trên {m['top']}, dưới {m['bottom']}, trái {m['left']}, phải {m['right']} px"
+        return "no border crop"
+    return f"top {m['top']}, bottom {m['bottom']}, left {m['left']}, right {m['right']} px"
 
 
-# ---------------------------------------------------------------- contrast ("bật tông")
+# ---------------------------------------------------------------- contrast
 
 def percentile_limits(img, pct=2.0):
     lo, hi = np.nanpercentile(img, [pct, 100 - pct])
@@ -150,18 +150,18 @@ def enhance(img, method="stretch", pct=2.0, gamma=0.7, sigma=8):
     """Returns (enhanced image, short description). Display-oriented: the result is for
     seeing cracks, not for measuring values."""
     if method == "none":
-        return img, "không tăng tương phản"
+        return img, "no contrast enhancement"
     if method == "stretch":
-        return stretch(img, pct), f"kéo giãn tương phản theo bách phân vị {pct:g}–{100 - pct:g}%"
+        return stretch(img, pct), f"percentile contrast stretch {pct:g}–{100 - pct:g}%"
     if method == "detrend":
-        return stretch(detrend(img, "bg", sigma), pct), f"trừ nền (Gaussian σ={sigma} px) rồi kéo giãn"
+        return stretch(detrend(img, "bg", sigma), pct), f"background removal (Gaussian σ={sigma} px), then stretch"
     if method == "local":
-        return stretch(local_normalize(img, sigma), pct), f"chuẩn hóa tương phản cục bộ (σ={sigma} px)"
+        return stretch(local_normalize(img, sigma), pct), f"local contrast normalisation (σ={sigma} px)"
     if method == "gamma":
-        return stretch(img, pct) ** gamma, f"kéo giãn rồi gamma {gamma:g}"
+        return stretch(img, pct) ** gamma, f"stretch, then gamma {gamma:g}"
     if method == "strong":
         z = local_normalize(detrend(img, "bg", sigma), sigma / 2)
-        return stretch(z, 1.0), "mạnh: trừ nền + chuẩn hóa cục bộ + kéo giãn 1–99%"
+        return stretch(z, 1.0), "strong: background removal + local normalisation + 1–99% stretch"
     raise ValueError(f"enhance must be one of {ENHANCE}")
 
 

@@ -19,19 +19,19 @@ plt.rcParams.update({"font.family": "DejaVu Sans", "font.size": 10, "axes.titles
 
 VIEWS = {
     # key: (title, cmap, diverging, stage)
-    "raw": ("Thô (chưa lọc)", "viridis", False, "raw"),
-    "filtered": ("Đã lọc nhiễu", "viridis", False, "filtered"),
-    "cropped": ("Đã cắt viền", "viridis", False, "cropped"),
-    "amplitude": ("Bản đồ {signal}", "magma", False, "cropped"),
-    "detrended": ("Đã trừ nền", "magma", False, "detrended"),
-    "dx": ("Đạo hàm theo X (dA/dx)", "RdBu_r", True, "dx"),
-    "dx_inv": ("Đạo hàm nghịch (−dA/dx)", "RdBu_r", True, "dx"),
-    "zmap": ("Bản đồ z (độ lệch so với nền)", "RdBu_r", True, "zmap"),
+    "raw": ("Raw (unfiltered)", "viridis", False, "raw"),
+    "filtered": ("Filtered", "viridis", False, "filtered"),
+    "cropped": ("Border cropped", "viridis", False, "cropped"),
+    "amplitude": ("{signal} map", "magma", False, "cropped"),
+    "detrended": ("Background removed", "magma", False, "detrended"),
+    "dx": ("X derivative (dA/dx)", "RdBu_r", True, "dx"),
+    "dx_inv": ("Inverted X derivative (−dA/dx)", "RdBu_r", True, "dx"),
+    "zmap": ("z-map (deviation from background)", "RdBu_r", True, "zmap"),
 }
 
 
 def signal_name(sensor):
-    return "pha" if sensor == "P" else "biên độ"
+    return "Phase" if sensor == "P" else "Amplitude"
 
 
 def png(fig, dpi=130):
@@ -196,7 +196,7 @@ def profile_figure(img, pitch, offset, along, pos_mm, title, cmap, diverging):
         a1.axvline(pos_mm, color="#22d3ee", lw=1.5)
         a2.plot(y, img[:, c], color=INK, lw=1.3)
         a2.set_xlabel("Y (mm)")
-    a2.set_title(f"Lát cắt {'ngang' if along == 'X' else 'dọc'} tại {'Y' if along == 'X' else 'X'} = {pos_mm:g} mm",
+    a2.set_title(f"{'Horizontal' if along == 'X' else 'Vertical'} profile at {'Y' if along == 'X' else 'X'} = {pos_mm:g} mm",
                  loc="left", color=INK)
     a2.grid(alpha=0.3)
     fig.tight_layout()

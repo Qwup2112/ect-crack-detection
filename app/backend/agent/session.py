@@ -26,7 +26,7 @@ from .tools import SERVER_NAME, TOOL_NAMES, Ctx, build_server
 
 MODEL = os.environ.get("ECT_MODEL", "claude-opus-5-5")
 EFFORT = os.environ.get("ECT_EFFORT", "medium")
-SKILLS = ["phan-tich-tu-dong", "cat-vien", "bat-tong", "nhan-dien-vet-nut", "ve-hinh", "phan-tich-python"]
+SKILLS = ["auto-analysis", "border-crop", "contrast", "crack-detection", "drawing", "python-analysis"]
 PROMPT_FILE = Path(__file__).with_name("system_prompt.md")
 
 # One Claude Code CLI process commits ~0.5 GB. With less free commit memory than this it crashes
@@ -46,13 +46,13 @@ if os.name == "nt":
 
 
 def explain_failure(e):
-    """Error text for the chat when the CLI fails: name the usual cause (memory) in Vietnamese."""
+    """Error text for the chat when the CLI fails: name the usual cause (memory) in plain words."""
     raw = f"{type(e).__name__}: {e}".strip()
     free = free_commit_mb()
     if isinstance(e, ClaudeSDKError) and free is not None and free < LOW_MEMORY_MB:
-        return (f"Trợ lý không chạy được vì máy đang thiếu bộ nhớ (còn khoảng {free} MB trống, trợ lý cần "
-                f"khoảng {LOW_MEMORY_MB} MB). Hãy đóng bớt chương trình (trình duyệt, Discord…) rồi gửi lại "
-                f"câu hỏi; cuộc chat vẫn được giữ.\n\nChi tiết: {raw}")
+        return (f"The assistant could not run because this PC is low on memory (about {free} MB free, the "
+                f"assistant needs about {LOW_MEMORY_MB} MB). Close some programs (browser, Discord…) and send "
+                f"the question again; the chat is kept.\n\nDetails: {raw}")
     return raw
 
 # The harness reads CLAUDE.md files from the agent's folder AND its parents. The project root's

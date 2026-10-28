@@ -43,7 +43,7 @@ def build_hooks(ctx):
         if name == "Skill":
             skill = args.get("skill") or args.get("name") or ""
             await ctx.emit("tool", {"id": tool_use_id, "name": "Skill", "status": "start",
-                                    "label": f"Đọc kỹ năng: {skill}"})
+                                    "label": f"Reading skill: {skill}"})
             return {}
         short = _short(name)
         if not name.startswith(PREFIX) or short not in TOOL_NAMES:

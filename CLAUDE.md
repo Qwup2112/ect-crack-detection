@@ -1,8 +1,9 @@
 # ECT Crack Chat - developer notes
 
-A local desktop app: chat on the left, figures on the right. The user asks in Vietnamese to
-draw, crop borders, boost contrast or detect cracks in ECT scan files (TDMS); a Claude agent
-answers and its tools draw the figures. The previous Tkinter app is gone (git tag `legacy-app`).
+A local desktop app: chat on the left, figures on the right. The user asks (in English or
+Vietnamese) to draw, crop borders, boost contrast or detect cracks in ECT scan files (TDMS); a
+Claude agent answers in English and its tools draw the figures. The previous Tkinter app is gone
+(git tag `legacy-app`).
 
 ## Layout
 
@@ -26,8 +27,8 @@ answers and its tools draw the figures. The previous Tkinter app is gone (git ta
   writes to app/state/work/<chat>/ and blocks subprocesses, network and registry writes;
   ECT_PYTHON_TOOL=0 turns it off), sysmem.py (free commit memory).
 - `app/agent_home/` - the agent's working folder: CLAUDE.md (its fixed knowledge) and
-  `.claude/skills/` (phan-tich-tu-dong = do the whole pipeline without asking, cat-vien, bat-tong,
-  nhan-dien-vet-nut, ve-hinh, phan-tich-python). Those are the agent's instructions, not yours;
+  `.claude/skills/` (auto-analysis = do the whole pipeline without asking, border-crop, contrast,
+  crack-detection, drawing, python-analysis). Those are the agent's instructions, not yours;
   a new skill must also be added to SKILLS in session.py.
 - `app/tools/` - developer scripts (export_onnx.py).
 - `app/backend/server.py` - FastAPI, SSE chat stream. Normally started by app/desktop.py on a
@@ -69,4 +70,6 @@ answers and its tools draw the figures. The previous Tkinter app is gone (git ta
 - Coordinates: boxes and mm values are in the ORIGINAL grid frame (before crop) everywhere.
 - The frontend contract (SSE events: session, delta, text, tool, image, done, error and the
   /api routes) is shared with docs/google_ai_studio_prompt.md - change both together.
-- UI text and agent replies are Vietnamese; code, comments and agent instructions are English.
+- Everything is English: UI text, figure titles and labels, tool results, agent replies, code,
+  comments and agent instructions (switched from Vietnamese on 2026-10-28). The skills keep a few
+  Vietnamese phrasings as aliases only, so the agent still understands Vietnamese requests.

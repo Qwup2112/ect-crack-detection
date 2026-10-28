@@ -1,4 +1,4 @@
-"""run_python: lets the agent write and run its own analysis code ("phân tích sâu").
+"""run_python: lets the agent write and run its own analysis code (in-depth analysis).
 
 The fixed tools cover the usual requests; this one is for everything else (statistics over
 many scans, custom filters, FFT, histograms, any plot). The code runs in a CHILD process, so a
@@ -68,17 +68,17 @@ def run(code, session_id, chat_state, timeout=TIMEOUT_S):
                            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         out = (p.stdout or b"").decode("utf-8", "replace") + (p.stderr or b"").decode("utf-8", "replace")
         if p.returncode not in (0, 1):
-            out += f"\n[tiến trình Python kết thúc với mã {p.returncode:#x} - thường do thiếu bộ nhớ]"
+            out += f"\n[the Python process exited with code {p.returncode:#x} - usually out of memory]"
     except subprocess.TimeoutExpired as e:
         timed_out = True
         out = ((e.stdout or b"").decode("utf-8", "replace") + (e.stderr or b"").decode("utf-8", "replace")
-               + f"\n[DỪNG: quá {timeout} s]")
+               + f"\n[STOPPED: over {timeout} s]")
     figs = []
     if fig_file.exists():
         figs = json.loads(fig_file.read_text(encoding="utf-8"))[:MAX_FIGURES]
-    out = out.strip() or "(không in ra gì - dùng print() để xem kết quả)"
+    out = out.strip() or "(nothing printed - use print() to see results)"
     if len(out) > MAX_OUTPUT:
-        out = out[:MAX_OUTPUT // 2] + f"\n... [cắt bớt {len(out) - MAX_OUTPUT} ký tự] ...\n" + out[-MAX_OUTPUT // 2:]
+        out = out[:MAX_OUTPUT // 2] + f"\n... [{len(out) - MAX_OUTPUT} characters cut] ...\n" + out[-MAX_OUTPUT // 2:]
     return out, figs, time.time() - t0, timed_out
 
 
@@ -112,13 +112,13 @@ def _install_guard(work):
             writes = (isinstance(mode, str) and any(c in mode for c in "wax+")) or \
                      (mode is None and isinstance(flags, int) and flags & WRITE_FLAGS)
             if writes and path is not None and not inside(path):
-                raise PermissionError(f"chỉ được ghi file trong thư mục làm việc ({work}); không ghi được {path}")
+                raise PermissionError(f"files can be written only in the work folder ({work}); cannot write {path}")
         elif event in PATH_EVENTS:
             for i in PATH_EVENTS[event]:
                 if i < len(args) and args[i] is not None and not inside(args[i]):
-                    raise PermissionError(f"{event} ngoài thư mục làm việc bị chặn: {args[i]}")
+                    raise PermissionError(f"{event} outside the work folder is blocked: {args[i]}")
         elif event.startswith(BLOCKED_PREFIXES) and event not in ("socket.gethostname",):
-            raise PermissionError(f"'{event}' bị chặn trong run_python (không chạy chương trình khác, không mạng)")
+            raise PermissionError(f"'{event}' is blocked in run_python (no other programs, no network)")
 
     sys.addaudithook(hook)
 
@@ -175,7 +175,7 @@ def main():
         name = f"fig_{time.strftime('%H%M%S')}_{len(figures) + 1}.png"
         fig.savefig(Path(work) / name, dpi=130, bbox_inches="tight")
         plt.close(fig)
-        figures.append({"file": name, "title": title or f"Hình {len(figures) + 1}", "caption": caption})
+        figures.append({"file": name, "title": title or f"Figure {len(figures) + 1}", "caption": caption})
         fig_file.write_text(json.dumps(figures, ensure_ascii=False), encoding="utf-8")
 
     ns = {"np": np, "scipy": scipy, "ndimage": ndimage, "signal": signal, "stats": stats, "plt": plt,
@@ -194,10 +194,10 @@ def main():
         tb = traceback.format_exc()
         if 'File "<run_python>"' in tb:           # hide this runner's own frames
             tb = tb[tb.find('File "<run_python>"'):]
-        print("LỖI khi chạy:\n" + tb, file=sys.stderr)
+        print("ERROR while running:\n" + tb, file=sys.stderr)
         sys.exit(1)
     if plt.get_fignums() and not figures:         # drew but forgot show(): show the last figure
-        show(title="Hình từ run_python")
+        show(title="Figure from run_python")
 
 
 if __name__ == "__main__":
