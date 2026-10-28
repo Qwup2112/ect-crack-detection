@@ -14,7 +14,7 @@ ECT = ROOT / "app" / "backend" / "ect"
 
 
 def main():
-    for stream in (sys.stdout, sys.stderr):         # Vietnamese text on a cp1252 console
+    for stream in (sys.stdout, sys.stderr):         # non-ASCII text (σ, –, °) on a cp1252 console
         stream.reconfigure(encoding="utf-8", errors="replace")
     try:
         payload = json.load(sys.stdin)

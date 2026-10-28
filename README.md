@@ -1,104 +1,114 @@
 # ECT Crack Chat
 
-Ứng dụng chat để phân tích ảnh quét dòng xoáy (ECT) lưu trong file TDMS. Bên trái là khung chat
-và câu trả lời, bên phải là hình kết quả. Bạn hỏi hoặc ra lệnh bằng tiếng Việt, ví dụ
-"Vẽ bản đồ nhiệt file R 1.7V 300k", "Cắt viền", "Bật tông", "Nhận diện vết nứt", "So sánh R và
-P". Trợ lý gọi các công cụ xử lý rồi vẽ kết quả sang khung phải.
+A chat app for analysing eddy-current testing (ECT) scans stored in TDMS files. The chat and the
+answers are on the left, the result figures on the right. You ask questions or give commands,
+for example "Draw the heatmap of file R 1.7V 300k", "Crop the border", "Boost the contrast",
+"Detect cracks", "Compare R and P". The assistant calls the processing tools and draws the
+results on the right. It answers in English; Vietnamese commands are understood too.
 
-Bộ não là **Claude Agent SDK**, tức harness của Claude Code đóng gói thành thư viện. Nó chạy
-bằng tài khoản Claude Code đã đăng nhập trên máy, **không cần và không dùng API key**.
+The brain is the **Claude Agent SDK**, the Claude Code harness packaged as a library. It runs on
+the Claude Code account logged in on this PC: **no API key is needed or used**.
 
-## Chạy
+## Running it
 
-Cài một lần (trên ổ D:, trong thư mục dự án):
+Install once (on the D: drive, in the project folder):
 
 ```bat
 python -m venv --system-site-packages .venv
 .venv\Scripts\python -m pip install -r requirements.txt
 ```
 
-Sau đó bấm đúp **`ECT Crack Chat`** (shortcut có icon trong thư mục dự án) hoặc `run_app.bat`.
-Đây là một phần mềm có cửa sổ riêng (WebView2 có sẵn trong Windows 11), không mở trình duyệt,
-không có đường link. Bộ xử lý chạy ngầm bên trong chương trình; đóng cửa sổ là tắt hết.
-Muốn đặt shortcut ra Desktop:
+Then double-click **`ECT Crack Chat`** (the shortcut with the icon in the project folder) or
+`run_app.bat`. It is a program with its own window (WebView2, built into Windows 11): no browser,
+no link. The backend runs hidden inside the program; closing the window stops everything.
+To put a shortcut on the Desktop:
 `powershell -ExecutionPolicy Bypass -File app\assets\make_shortcut.ps1 -Dest "$env:USERPROFILE\Desktop"`.
 
-Máy cần đã đăng nhập Claude Code (lệnh `claude` chạy được). Nhật ký: `app/state/desktop.log`.
+The PC must be logged in to Claude Code (the `claude` command works). Log: `app/state/desktop.log`.
 
-## Trợ lý biết làm gì
+## What the assistant can do
 
-| Công cụ | Việc |
+| Tool | Job |
 |---|---|
-| `list_scans`, `scan_info` | Tra danh mục 110 file (101 file đọc được), thông số, cảnh báo |
-| `draw_scan` | Vẽ: thô, đã lọc, đã cắt viền, bản đồ biên độ/pha, trừ nền, đạo hàm dA/dx, bản đồ z, báo cáo 6 hình, ảnh đầu vào YOLO |
-| `crop_border` | Cắt viền tự động (đo riêng từng cạnh, thường không đối xứng) hoặc cố định, hiện vùng bị cắt |
-| `enhance_contrast` | Bật tông: kéo giãn, trừ nền, chuẩn hóa cục bộ, gamma, mạnh |
-| `detect_cracks` | Nhận diện vết nứt bằng YOLO (chạy bằng ONNX, ~0,4 s, nhẹ bộ nhớ; tự chuyển sang bộ dò ngưỡng nếu không chạy được), so với nhãn |
-| `measure_crack` | Đo chiều dài, chiều rộng, góc, SNR của một vết nứt |
-| `compare_scans` | So sánh 2–8 file, xếp hạng theo z_top5 |
-| `profile_line` | Lát cắt 1D theo X hoặc Y |
-| `run_python` | **Phân tích sâu**: trợ lý tự viết và chạy Python (thống kê nhiều file, xu hướng theo tần số, FFT, histogram, đồ thị tùy ý) |
-| `remember`, `recall`, `forget` | Bộ nhớ dài hạn (sở thích, điều đã học) |
+| `list_scans`, `scan_info` | Browse the catalogue of 110 files (101 readable), parameters, warnings |
+| `draw_scan` | Draw: raw, filtered, border cropped, amplitude/phase map, background removed, dA/dx derivative, z-map, 6-panel report, YOLO input image |
+| `crop_border` | Automatic border crop (measured per edge, usually asymmetric) or fixed, showing the cropped bands |
+| `enhance_contrast` | Contrast boost: stretch, background removal, local normalisation, gamma, strong |
+| `detect_cracks` | Crack detection with YOLO (runs on ONNX, ~0.4 s, light on memory; falls back to the threshold detector if it cannot run), scored against the labels |
+| `measure_crack` | Length, width, angle and SNR of one crack |
+| `compare_scans` | Compare 2–8 files, ranked by z_top5 |
+| `profile_line` | 1D profile along X or Y |
+| `run_python` | **In-depth analysis**: the assistant writes and runs its own Python (statistics over many files, trends over frequency, FFT, histograms, any plot) |
+| `remember`, `recall`, `forget` | Long-term memory (preferences, things learned) |
 
-Trợ lý **tự làm trọn việc**: "phân tích file X", "detect vết nứt", "gửi kết quả sau cùng" thì nó
-tự cắt viền, bật tông, nhận diện, đo và báo cáo trong một lần trả lời, không dừng lại hỏi từng bước.
+The assistant **does the whole job itself**: for "analyse file X", "detect cracks" or "send the
+final result" it crops the border, boosts the contrast, detects, measures and reports in one
+answer, without stopping to ask at every step.
 
-**Quyền của `run_python`:** mã chạy trong một tiến trình riêng (tối đa 180 s), chỉ được ghi file
-vào `app/state/work/<cuộc chat>/`; `data/` và `results/labels/` chỉ đọc; không chạy chương trình
-khác, không mạng, không ghi registry. Mọi đoạn mã đều được ghi lại trong
-`app/state/logs/tools.jsonl`. Muốn tắt công cụ này: đặt biến môi trường `ECT_PYTHON_TOOL=0`.
+**What `run_python` may do:** the code runs in a separate process (at most 180 s) and can write
+files only in `app/state/work/<chat>/`; `data/` and `results/labels/` are read-only; it cannot
+start other programs, use the network or write the registry. Every piece of code is logged in
+`app/state/logs/tools.jsonl`. To turn the tool off, set the environment variable
+`ECT_PYTHON_TOOL=0`.
 
-Hình không bị răng cưa nhờ phương pháp của phòng lab (`scripts/dataloader.py`):
-đảo dòng lẻ của quét zig-zag (`reshape_raster`), căn lệch chiều đi/về, lọc thông thấp `LPF`
-(FIR Hamming bậc 24) dọc mỗi cột, rồi hiển thị nội suy bilinear. Đo trên 3 file, phần răng cưa
-còn lại 20–30% so với chỉ đảo dòng.
+The maps have no sawtooth thanks to the lab's method (`scripts/dataloader.py`): reverse the odd
+lines of the zig-zag scan (`reshape_raster`), align the forward and return lines, low-pass filter
+(`LPF`, Hamming FIR of order 24) down each column, then display with bilinear interpolation.
+Measured on 3 files, 20–30% of the sawtooth is left compared with reversing the lines only.
 
 ## Harness: memory, tools, hooks, skills
 
-- **Memory**: `app/agent_home/CLAUDE.md` (kiến thức cố định về bộ dữ liệu) +
-  `app/state/memory.json` (điều trợ lý học khi chat, qua `remember`) + phiên chat hiện tại.
-- **Tools**: máy chủ MCP trong tiến trình (`app/backend/agent/tools.py`), chỉ các tool trên;
-  Bash, đọc/ghi file… của Claude Code bị tắt. Phân tích tự do đi qua `run_python` (có rào chắn).
-- **Hooks** (`app/backend/agent/hooks.py`): PreToolUse chặn tool lạ và đổi tên file gõ tắt
-  thành id chuẩn (hoặc từ chối kèm danh sách nếu mơ hồ); PostToolUse báo trạng thái lên giao
-  diện và ghi nhật ký; UserPromptSubmit nạp bộ nhớ vào mỗi câu hỏi.
-- **Skills** (`app/agent_home/.claude/skills/`): dạy trợ lý **phân tích tự động trọn quy trình**
-  (`phan-tich-tu-dong`), **cắt viền** (`cat-vien`), **bật tông** (`bat-tong`), **nhận diện vết
-  nứt** (`nhan-dien-vet-nut`), **chọn hình để vẽ** (`ve-hinh`), **phân tích sâu bằng Python**
-  (`phan-tich-python`).
+- **Memory**: `app/agent_home/CLAUDE.md` (fixed knowledge about the dataset) +
+  `app/state/memory.json` (what the assistant learns while chatting, through `remember`) + the
+  current chat session.
+- **Tools**: an in-process MCP server (`app/backend/agent/tools.py`) with only the tools above;
+  Claude Code's Bash, file reading/writing and so on are off. Free-form analysis goes through
+  `run_python` (guarded).
+- **Hooks** (`app/backend/agent/hooks.py`): PreToolUse blocks unknown tools and turns short scan
+  names into exact ids (or refuses with the candidates when ambiguous); PostToolUse reports the
+  status to the UI and writes the log; UserPromptSubmit adds the memory to every question.
+- **Skills** (`app/agent_home/.claude/skills/`): teach the assistant the **automatic end-to-end
+  analysis** (`auto-analysis`), **border cropping** (`border-crop`), **contrast boost**
+  (`contrast`), **crack detection** (`crack-detection`), **which figure to draw** (`drawing`)
+  and **in-depth analysis with Python** (`python-analysis`).
 
-Khi phát triển bằng Claude Code: `CLAUDE.md` ở gốc dự án, `.claude/settings.json` chặn ghi vào
-`data/` và `results/labels/`, và một hook chạy smoke test sau mỗi lần sửa `app/backend/ect/`.
+When developing with Claude Code: `CLAUDE.md` at the project root, `.claude/settings.json` blocks
+writes to `data/` and `results/labels/`, and a hook runs the smoke test after every edit to
+`app/backend/ect/`.
 
-## Giao diện
+## Interface
 
-`app/frontend/index.html` là thiết kế làm bằng Google AI Studio
-(prompt: [`docs/google_ai_studio_prompt.md`](docs/google_ai_studio_prompt.md)), đã nối với bộ
-xử lý: chữ trả lời chạy dần, trạng thái từng công cụ, hình hiện bên phải, "Mở ảnh gốc" mở bằng
-trình xem ảnh của Windows, "Tải ảnh" mở hộp thoại lưu. Phần "mô phỏng" của bản AI Studio (tự vẽ
-ảnh giả và bịa số liệu khi mất kết nối) đã bị bỏ: mọi hình và con số đều do công cụ thật tạo ra.
+`app/frontend/index.html` is a design made with Google AI Studio
+(prompt: [`docs/google_ai_studio_prompt.md`](docs/google_ai_studio_prompt.md)), connected to the
+backend: the answer text streams in, each tool shows its status, figures appear on the right,
+"Open original" opens the image in the Windows image viewer, "Save image" opens a save dialog.
+The AI Studio version's "simulation" (fake images and invented numbers when offline) was removed:
+every figure and number comes from the real tools.
 
-## Lưu ý về dữ liệu
+## Notes on the data
 
-- Nhãn trong `results/labels/` là **bản nháp**, chưa người duyệt. Mọi điểm số so với nhãn là tạm.
-- Mô hình YOLO chỉ học trên tấm chuẩn 15 vết nứt (lưới 3 × 5); vẫn báo sai trên ảnh nhiễu.
-- 1 file rỗng, 10 file bị cắt cụt, 18 file theo quy ước tên cũ: công cụ đọc được và có cảnh báo.
+- The labels in `results/labels/` are a **draft**, not reviewed by a person. Every score against
+  them is provisional.
+- The YOLO model learned only on the 15-crack calibration coupon (3 × 5 grid); it still fires on
+  noise images.
+- 1 empty file, 10 truncated files and 18 files with the old naming convention: the tools read
+  them and report a warning.
 
-## Cấu trúc
+## Layout
 
 ```
-data/                 file TDMS gốc (chỉ đọc)
-results/labels/       nhãn nháp;  results/model/  trọng số YOLO
-scripts/              code của phòng lab (dataloader.py, plot_all_1Hall_heatmaps.py)
-app/backend/ect/      xử lý: đọc, lọc, cắt viền, bật tông, nhận diện, vẽ
-app/backend/agent/    trợ lý: tools, hooks, memory, phiên chat, system prompt
-app/agent_home/       CLAUDE.md + skills của trợ lý
-app/backend/server.py backend FastAPI (chạy ngầm trong phần mềm)
-app/desktop.py        phần mềm desktop: cửa sổ WebView2 + khởi động backend
-app/frontend/         giao diện (thiết kế Google AI Studio, đã nối backend)
-app/assets/           icon, script tạo shortcut
-app/state/            ảnh, bộ nhớ, nhật ký khi chạy (không đưa vào git)
-docs/                 prompt Google AI Studio
+data/                 original TDMS files (read-only)
+results/labels/       draft labels;  results/model/  YOLO weights
+scripts/              the lab's code (dataloader.py, plot_all_1Hall_heatmaps.py)
+app/backend/ect/      processing: read, filter, border crop, contrast, detection, drawing
+app/backend/agent/    the assistant: tools, hooks, memory, chat session, system prompt
+app/agent_home/       the assistant's CLAUDE.md + skills
+app/backend/server.py FastAPI backend (runs hidden inside the program)
+app/desktop.py        the desktop program: WebView2 window + backend start-up
+app/frontend/         the UI (Google AI Studio design, connected to the backend)
+app/assets/           icon, shortcut script
+app/state/            images, memory, logs at run time (not in git)
+docs/                 the Google AI Studio prompt
 ```
 
-Phần mềm cũ (app Tkinter) lấy lại được bằng `git checkout legacy-app`.
+The old program (Tkinter app) can be restored with `git checkout legacy-app`.

@@ -1,12 +1,12 @@
 <!DOCTYPE html>
-<html lang="vi">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>ECT Crack Chat</title>
-  <meta name="description" content="Giao diện trợ lý trò chuyện và trực quan hóa bản đồ nhiệt quét vết nứt dòng xoáy Eddy-Current Testing (ECT)">
+  <meta name="description" content="Chat assistant and heatmap viewer for Eddy-Current Testing (ECT) crack scans">
   <meta property="og:title" content="ECT Crack Chat">
-  <meta property="og:description" content="Trực quan hóa bản đồ nhiệt quét vết nứt dòng xoáy ECT">
+  <meta property="og:description" content="Heatmap viewer for ECT eddy-current crack scans">
   <meta property="og:type" content="website">
 
   <style>
@@ -225,7 +225,7 @@
       transform: translateX(-50%) translateY(2px);
     }
 
-    /* Cuộc chat mới Button */
+    /* New chat button */
     .btn-new-chat {
       display: inline-flex;
       align-items: center;
@@ -791,7 +791,7 @@
 <body>
   <div class="app-container">
     <!-- LEFT COLUMN: Chat & Assistant -->
-    <section class="left-column" aria-label="Khu vực hội thoại">
+    <section class="left-column" aria-label="Conversation">
       <!-- 1. Top Bar -->
       <header class="left-top-bar">
         <div class="brand-section">
@@ -823,15 +823,15 @@
           <!-- Status Dot with Tooltip -->
           <div class="status-dot-container" id="status-container" tabindex="0">
             <span class="status-dot green" id="status-dot"></span>
-            <span class="status-tooltip" id="status-tooltip">Backend sẵn sàng</span>
+            <span class="status-tooltip" id="status-tooltip">Backend ready</span>
           </div>
 
-          <!-- Cuộc chat mới Button -->
-          <button class="btn-new-chat" id="btn-new-chat" title="Xóa hội thoại và bắt đầu lại">
+          <!-- New chat button -->
+          <button class="btn-new-chat" id="btn-new-chat" title="Clear the conversation and start over">
             <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M12 5v14M5 12h14"/>
             </svg>
-            Cuộc chat mới
+            New chat
           </button>
         </div>
       </header>
@@ -848,26 +848,26 @@
             class="composer-textarea"
             id="composer-input"
             rows="1"
-            placeholder="Nhập câu hỏi hoặc lệnh vẽ… (Enter để gửi, Shift+Enter xuống dòng)"
-            aria-label="Nội dung lệnh hoặc câu hỏi"
+            placeholder="Type a question or a drawing command… (Enter to send, Shift+Enter for a new line)"
+            aria-label="Question or command"
           ></textarea>
           <button type="submit" class="btn-action" id="btn-submit">
-            Gửi
+            Send
           </button>
         </form>
       </footer>
     </section>
 
     <!-- RIGHT COLUMN: Image Results -->
-    <section class="right-column" aria-label="Kết quả trực quan bản đồ quét ECT">
+    <section class="right-column" aria-label="ECT scan figures">
       <!-- 1. Top Bar -->
       <header class="right-top-bar">
         <div class="right-title-container">
-          <span class="right-image-title" id="stage-title">Chưa có ảnh được chọn</span>
+          <span class="right-image-title" id="stage-title">No image selected</span>
         </div>
         <div style="display: flex; align-items: center; gap: 8px;">
-          <a href="#" class="link-open-original disabled" id="btn-download-image" download="ect_scan.png" title="Tải ảnh PNG về máy">
-            Tải ảnh
+          <a href="#" class="link-open-original disabled" id="btn-download-image" download="ect_scan.png" title="Save the PNG to this computer">
+            Save image
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
               <polyline points="7 10 12 15 17 10"></polyline>
@@ -875,7 +875,7 @@
             </svg>
           </a>
           <a href="#" class="link-open-original disabled" id="link-open-original" target="_blank" rel="noopener noreferrer">
-            Mở ảnh gốc
+            Open original
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
               <polyline points="15 3 21 3 21 9"></polyline>
@@ -887,7 +887,7 @@
 
       <!-- 2. Stage -->
       <div class="right-stage-wrapper" id="stage-wrapper">
-        <div class="stage-card" id="stage-card" style="display: none;" title="Bấm để phóng to 100% / Thu nhỏ">
+        <div class="stage-card" id="stage-card" style="display: none;" title="Click to zoom to 100% / fit">
           <img src="" alt="" class="stage-image" id="stage-image">
         </div>
 
@@ -897,7 +897,7 @@
             <circle cx="18" cy="18" r="9.5" fill="none" stroke="#475569" stroke-width="1.8"/>
             <circle cx="18" cy="18" r="5" fill="none" stroke="#475569" stroke-width="1.8"/>
           </svg>
-          <p class="placeholder-text">Hình do trợ lý vẽ sẽ hiện ở đây.</p>
+          <p class="placeholder-text">Figures drawn by the assistant appear here.</p>
         </div>
       </div>
 
@@ -905,8 +905,8 @@
       <div class="caption-bar" id="stage-caption"></div>
 
       <!-- 4. Filmstrip -->
-      <div class="filmstrip" id="filmstrip" aria-label="Dải phim thu nhỏ ảnh quét">
-        <span class="filmstrip-empty-text" id="filmstrip-empty">Chưa có ảnh quét nào trong phiên chat</span>
+      <div class="filmstrip" id="filmstrip" aria-label="Figure thumbnails">
+        <span class="filmstrip-empty-text" id="filmstrip-empty">No figures in this chat yet</span>
       </div>
     </section>
   </div>
@@ -953,12 +953,12 @@
       const filmstripEmpty = document.getElementById('filmstrip-empty');
 
       const SUGGESTIONS = [
-        "Có những file quét nào?",
-        "Vẽ bản đồ nhiệt file R 1.7V 300k",
-        "Cắt viền tự động file R 1.7V 300k",
-        "Bật tông file cam_4lop_1 R 4V 10k cho vết nứt rõ hơn",
-        "Nhận diện vết nứt file R 1.7V 300k",
-        "So sánh R và P của cambien 1.3V 200k 145x95"
+        "Which scan files are there?",
+        "Draw the heatmap of file R 1.7V 300k",
+        "Auto-crop the border of file R 1.7V 300k",
+        "Boost the contrast of cam_4lop_1 R 4V 10k so the cracks stand out",
+        "Detect cracks in file R 1.7V 300k",
+        "Compare R and P of cambien 1.3V 200k 145x95"
       ];
 
       // ---------------------------------------------------- safe markdown
@@ -990,9 +990,9 @@
       function setStatus(status, customTip) {
         statusDot.className = 'status-dot ' + status;
         const tips = {
-          green: 'Sẵn sàng nhận lệnh',
-          amber: 'Đang trả lời & xử lý dữ liệu quét…',
-          red: 'Bộ xử lý chưa chạy - hãy mở lại phần mềm'
+          green: 'Ready',
+          amber: 'Answering & processing scan data…',
+          red: 'The backend is not running - reopen the program'
         };
         statusTooltip.textContent = customTip || tips[status];
         statusDot.parentElement.setAttribute('title', statusTooltip.textContent);
@@ -1004,8 +1004,8 @@
           if (res.ok) {
             const h = await res.json();
             if (!isStreaming) {
-              setStatus('green', `Sẵn sàng · ${h.model} · ${h.readable}/${h.scans} file đọc được`
-                + (h.yolo_weights ? '' : ' · chưa có mô hình YOLO'));
+              setStatus('green', `Ready · ${h.model} · ${h.readable}/${h.scans} files readable`
+                + (h.yolo_weights ? '' : ' · no YOLO model'));
             }
             return true;
           }
@@ -1035,8 +1035,8 @@
                 <circle cx="18" cy="18" r="1.5" fill="#ffffff"/>
               </svg>
             </div>
-            <h2 class="empty-state-heading">Hỏi hoặc ra lệnh vẽ</h2>
-            <p class="empty-state-desc">Chọn câu lệnh phân tích tín hiệu quét dòng xoáy ECT bên dưới hoặc gõ trực tiếp câu hỏi.</p>
+            <h2 class="empty-state-heading">Ask a question or give a drawing command</h2>
+            <p class="empty-state-desc">Pick an ECT eddy-current scan analysis command below, or type your own question.</p>
             <div class="suggestion-chips-grid" id="suggestion-grid"></div>`;
           const grid = emptyDiv.querySelector('#suggestion-grid');
           SUGGESTIONS.forEach(text => {
@@ -1068,7 +1068,7 @@
               chip.className = `tool-chip ${tool.status}`;
               let meta = '…';
               if (tool.status === 'done') meta = tool.duration ? ` <span class="tool-duration">· ${tool.duration} s</span>` : '';
-              else if (tool.status === 'error') meta = ` <span style="color:#ef4444">— lỗi</span>`;
+              else if (tool.status === 'error') meta = ` <span style="color:#ef4444">— error</span>`;
               chip.innerHTML = `<span class="tool-dot"></span><span>${escapeHtml(tool.name)}${meta}</span>`;
               messageList.appendChild(chip);
             });
@@ -1151,8 +1151,8 @@
         if (!api || !activeImageId) return;
         e.preventDefault();
         const r = await api.save_image(activeImageId);
-        if (r && r.saved) stageCaption.textContent = 'Đã lưu: ' + r.saved;
-        else if (r && r.error) stageCaption.textContent = 'Không lưu được: ' + r.error;
+        if (r && r.saved) stageCaption.textContent = 'Saved: ' + r.saved;
+        else if (r && r.error) stageCaption.textContent = 'Could not save: ' + r.error;
       });
 
       // ---------------------------------------------------- backend stream
@@ -1178,7 +1178,7 @@
             }
             break;
           case 'image': {
-            const img = { id: ev.id, title: ev.title || 'Hình', url: ev.url, caption: ev.caption || '' };
+            const img = { id: ev.id, title: ev.title || 'Figure', url: ev.url, caption: ev.caption || '' };
             msg.images.push(img);
             addImageToGallery(img);
             break;
@@ -1186,11 +1186,11 @@
           case 'done':
             msg.tools.forEach(t => { if (t.status === 'running') t.status = 'done'; });
             if (ev.error) {
-              messages.push({ role: 'error', content: 'Trợ lý dừng với lỗi: ' + ((ev.detail || []).join('; ') || 'không rõ nguyên nhân') });
+              messages.push({ role: 'error', content: 'The assistant stopped with an error: ' + ((ev.detail || []).join('; ') || 'unknown cause') });
             }
             break;
           case 'error':
-            messages.push({ role: 'error', content: ev.message || 'Lỗi không rõ' });
+            messages.push({ role: 'error', content: ev.message || 'Unknown error' });
             break;
         }
         scheduleRender();
@@ -1203,7 +1203,7 @@
           body: JSON.stringify({ message: userPrompt, session_id: sessionId }),
           signal
         });
-        if (!res.ok || !res.body) throw new Error(`Bộ xử lý trả lỗi HTTP ${res.status}`);
+        if (!res.ok || !res.body) throw new Error(`The backend returned HTTP ${res.status}`);
         const msg = { role: 'assistant', content: '', tools: [], images: [] };
         messages.push(msg);
         scheduleRender();
@@ -1243,13 +1243,13 @@
         scheduleRender();
 
         isStreaming = true;
-        btnSubmit.textContent = 'Dừng';
+        btnSubmit.textContent = 'Stop';
         btnSubmit.classList.add('btn-abort');
         setStatus('amber');
         abortController = new AbortController();
         try {
           if (!(await checkBackendHealth())) {
-            throw new Error('Bộ xử lý (backend) không phản hồi. Hãy đóng và mở lại phần mềm.');
+            throw new Error('The backend is not responding. Close and reopen the program.');
           }
           setStatus('amber');
           await streamFromBackend(text, abortController.signal);
@@ -1257,7 +1257,7 @@
           if (err.name === 'AbortError') {
             const last = messages[messages.length - 1];
             if (last && last.role === 'assistant') {
-              last.content += '\n\n*(Đã dừng theo yêu cầu)*';
+              last.content += '\n\n*(Stopped on request)*';
               last.tools.forEach(t => { if (t.status === 'running') t.status = 'error'; });
             }
           } else {
@@ -1265,7 +1265,7 @@
           }
         } finally {
           isStreaming = false;
-          btnSubmit.textContent = 'Gửi';
+          btnSubmit.textContent = 'Send';
           btnSubmit.classList.remove('btn-abort');
           abortController = null;
           scheduleRender();
@@ -1302,7 +1302,7 @@
         activeImageId = null;
         stageCard.style.display = 'none';
         stagePlaceholder.style.display = 'flex';
-        stageTitle.textContent = 'Chưa có ảnh được chọn';
+        stageTitle.textContent = 'No image selected';
         stageCaption.textContent = '';
         linkOpenOriginal.href = '#';
         linkOpenOriginal.classList.add('disabled');

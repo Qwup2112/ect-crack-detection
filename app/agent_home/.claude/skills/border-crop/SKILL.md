@@ -1,9 +1,9 @@
 ---
-name: cat-vien
-description: Cắt viền (border cropping) of ECT scans. Use before cropping, when the user asks to trim or remove noisy edges, or when edge artifacts appear in a map or detection.
+name: border-crop
+description: Border cropping (Vietnamese "cắt viền") of ECT scans. Use before cropping, when the user asks to trim or remove noisy edges, or when edge artifacts appear in a map or detection.
 ---
 
-# Cắt viền — removing the noisy scan border
+# Border crop — removing the noisy scan border
 
 ## Why the border is noisy
 

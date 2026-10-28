@@ -35,7 +35,7 @@ import urllib.request  # noqa: E402
 import webview       # noqa: E402
 
 BG = "#0a0d12"
-SPLASH = f"""<!doctype html><html lang="vi"><head><meta charset="utf-8"><style>
+SPLASH = f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><style>
 html,body{{margin:0;height:100%;background:{BG};color:#94a3b8;font:15px "Segoe UI",system-ui,sans-serif;
 display:flex;align-items:center;justify-content:center}} .box{{text-align:center}}
 svg{{animation:spin 2.4s linear infinite}} @keyframes spin{{to{{transform:rotate(360deg)}}}}
@@ -43,18 +43,18 @@ h1{{color:#f1f5f9;font-size:18px;font-weight:600;margin:18px 0 6px}}</style></he
 <svg width="64" height="64" viewBox="0 0 36 36"><circle cx="18" cy="18" r="14" fill="none" stroke="#c87d55"
 stroke-width="2.2" stroke-dasharray="70 18"/><circle cx="18" cy="18" r="9.5" fill="none" stroke="#d7825e"
 stroke-width="2.2"/><circle cx="18" cy="18" r="5" fill="none" stroke="#e5a489" stroke-width="2.2"/></svg>
-<h1>ECT Crack Chat</h1><div>Đang khởi động bộ xử lý…</div></div></body></html>"""
+<h1>ECT Crack Chat</h1><div>Starting the backend…</div></div></body></html>"""
 
 
 def error_page(detail):
     esc = (detail or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-    return f"""<!doctype html><html lang="vi"><head><meta charset="utf-8"><style>
+    return f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><style>
 body{{margin:0;padding:28px;background:{BG};color:#e2e8f0;font:14px "Segoe UI",system-ui,sans-serif}}
 h1{{color:#fca5a5;font-size:18px}} pre{{background:#10151d;border:1px solid #242e3f;padding:12px;
 white-space:pre-wrap;font-size:12px;color:#cbd5e1;max-height:60vh;overflow:auto}}</style></head><body>
-<h1>Không khởi động được bộ xử lý</h1>
-<p>Thường do máy thiếu bộ nhớ (hãy đóng bớt ứng dụng hoặc khởi động lại máy), hoặc thiếu thư viện
-trong .venv. Chi tiết (cũng có trong app/state/desktop.log):</p><pre>{esc}</pre></body></html>"""
+<h1>The backend could not start</h1>
+<p>Usually this PC is low on memory (close some programs or restart the PC), or a library is missing
+from .venv. Details (also in app/state/desktop.log):</p><pre>{esc}</pre></body></html>"""
 
 
 class Api:
@@ -76,7 +76,7 @@ class Api:
         """Open the full-size PNG in the Windows image viewer."""
         p, _ = self._image(iid)
         if p is None:
-            return {"error": "không tìm thấy ảnh"}
+            return {"error": "image not found"}
         os.startfile(p)
         return {"opened": str(p)}
 
@@ -84,7 +84,7 @@ class Api:
         """Save the PNG where the user chooses (Save As dialog)."""
         p, meta = self._image(iid)
         if p is None:
-            return {"error": "không tìm thấy ảnh"}
+            return {"error": "image not found"}
         title = meta.get("title") or p.stem
         name = "".join(c if c.isalnum() or c in " ._-" else "_" for c in title).strip()[:80] or p.stem
         res = self._window.create_file_dialog(webview.FileDialog.SAVE, directory=str(Path.home() / "Pictures"),
@@ -151,7 +151,7 @@ def main():
                 print(f"backend ready on 127.0.0.1:{port}")
                 window.load_url(f"http://127.0.0.1:{port}/")
             else:
-                window.load_html(error_page("Bộ xử lý không trả lời sau 90 giây.\n\n" + LOG.read_text(
+                window.load_html(error_page("The backend did not answer within 90 seconds.\n\n" + LOG.read_text(
                     encoding="utf-8", errors="replace")[-3000:]))
         except BaseException:
             detail = traceback.format_exc()

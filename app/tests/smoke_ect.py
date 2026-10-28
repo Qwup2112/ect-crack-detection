@@ -12,7 +12,7 @@ CASES = ["cambien_4lop_2 R 1.7V 300k", "cambien_4lop_2 P 0.3V 20k 145x95"]
 
 
 def main():
-    for stream in (sys.stdout, sys.stderr):         # Vietnamese text on a cp1252 console
+    for stream in (sys.stdout, sys.stderr):         # non-ASCII text (σ, –, °) on a cp1252 console
         stream.reconfigure(encoding="utf-8", errors="replace")
     t0 = time.time()
     use_yolo = "--yolo" in sys.argv

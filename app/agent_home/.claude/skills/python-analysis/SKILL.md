@@ -1,9 +1,9 @@
 ---
-name: phan-tich-python
-description: Phân tích sâu bằng Python - how to use run_python for analysis the fixed tools cannot do (statistics over many scans, trends over frequency or amplitude, FFT, histograms, correlations, custom filters and plots). Load before the first run_python call of a chat.
+name: python-analysis
+description: In-depth analysis with Python - how to use run_python for analysis the fixed tools cannot do (statistics over many scans, trends over frequency or amplitude, FFT, histograms, correlations, custom filters and plots). Load before the first run_python call of a chat.
 ---
 
-# Phân tích sâu bằng Python — run_python
+# In-depth analysis with Python — run_python
 
 Use the fixed tools for the standard figures (draw_scan, crop_border, enhance_contrast,
 detect_cracks, measure_crack, compare_scans, profile_line). Write Python when the question
@@ -24,7 +24,8 @@ needs a number or a figure none of them produces. Never guess a number you could
   `detect.measure_crack(img, box, pitch)`, `detect.cnr(img, box)`, `detect.z_top5(boxes)`.
 - `catalog()` -> list of `{id, session, sensor, amp, freq, size_x, size_y, status}`; use
   only `status == "ok"` (or starting with "truncated", with a warning).
-- `show(fig, title, caption)` -> the figure appears on the right panel. Titles in Vietnamese.
+- `show(fig, title, caption)` -> the figure appears on the right panel. Titles and axis labels
+  in English.
 - `chat` -> this chat's state (crop / enhance choices, last scan, last detections).
 - The working directory is the chat's work folder: save intermediate files there
   (`np.save("x.npy", a)`), they stay for the rest of the chat.
@@ -57,8 +58,8 @@ rows.sort()
 for r in rows: print(r)
 fig, ax = plt.subplots(figsize=(7, 4))
 ax.plot([r[0] for r in rows], [r[2] for r in rows], "o-")
-ax.set_xlabel("Tần số (kHz)"); ax.set_ylabel("z_top5")
-show(fig, "z_top5 theo tần số - cambien_4lop_2 R", "độ nổi bật vết nứt so với nhiễu nền")
+ax.set_xlabel("Frequency (kHz)"); ax.set_ylabel("z_top5")
+show(fig, "z_top5 versus frequency - cambien_4lop_2 R", "crack contrast against background noise")
 ```
 
 A map in mm with the detected boxes:
@@ -66,7 +67,7 @@ A map in mm with the detected boxes:
 ```python
 grid, meta = load("R 1.7V 300k"); st = stages(meta["id"]); p = meta["pitch_mm"]
 fig, ax = plt.subplots(figsize=(8, 5))
-render.draw_map(ax, st["detrended"], p, st["offset"], "magma", title="Đã trừ nền")
+render.draw_map(ax, st["detrended"], p, st["offset"], "magma", title="Background removed")
 render.draw_boxes(ax, yolo(meta["id"]), p)
-show(fig, "Bản đồ trừ nền + hộp YOLO")
+show(fig, "Background-removed map + YOLO boxes")
 ```

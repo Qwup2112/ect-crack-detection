@@ -1,4 +1,4 @@
-"""Crack detection ("nhận diện vết nứt") and measurement.
+"""Crack detection and measurement.
 
 Two detectors, used together:
   yolo      - YOLO11n fine-tuned on the labelled scans (results/model/crack_yolo.pt).

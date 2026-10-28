@@ -1,16 +1,16 @@
 ---
-name: nhan-dien-vet-nut
-description: Nhận diện vết nứt (crack detection) in ECT scans and how to interpret and report the result. Use whenever the user asks where the cracks are, how many, to detect, count, score, measure or compare cracks.
+name: crack-detection
+description: Crack detection (Vietnamese "nhận diện vết nứt") in ECT scans and how to interpret and report the result. Use whenever the user asks where the cracks are, how many, to detect, count, score, measure or compare cracks.
 ---
 
-# Nhận diện vết nứt — detecting and reporting cracks
+# Crack detection — detecting and reporting cracks
 
 ## Procedure
 
 1. Pick the scan (the PreToolUse hook resolves names; if it lists several, ask).
 2. The border is handled for you: detect_cracks uses the auto crop unless the chat chose
    another one, so do not call crop_border first just for detection. If edge boxes appear,
-   look at the crop (skill cat-vien) and re-run.
+   look at the crop (skill border-crop) and re-run.
 3. `detect_cracks` with method `yolo` (default; runs on onnxruntime in about a second). If YOLO
    cannot run, the tool falls back to the threshold detector and says so - pass that on.
 4. Report: the number of cracks, then each as `#n: X, Y (mm), box size, confidence`. Keep the
@@ -19,7 +19,7 @@ description: Nhận diện vết nứt (crack detection) in ECT scans and how to
    If the scan was in YOLO's training set, add that its score is optimistic.
 6. Check the result yourself before answering: 15 expected (3 x 5); if the count is far off
    (< 12 or > 18), also run `method=threshold` and compare. If the user asked about size, run
-   `measure_crack` yourself. For a full analysis follow skill phan-tich-tu-dong.
+   `measure_crack` yourself. For a full analysis follow skill auto-analysis.
 7. End with at most one optional next step as an offer (measure a crack, the dipole view
    `draw_scan dx`), not a question the user must answer first.
 

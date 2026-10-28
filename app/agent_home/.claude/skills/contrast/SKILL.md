@@ -1,9 +1,9 @@
 ---
-name: bat-tong
-description: Bật tông (contrast enhancement) for ECT maps so cracks stand out. Use when the user asks to boost contrast, make cracks clearer or brighter, or when a scan looks flat, faint or washed out.
+name: contrast
+description: Contrast enhancement (Vietnamese "bật tông") for ECT maps so cracks stand out. Use when the user asks to boost contrast, make cracks clearer or brighter, or when a scan looks flat, faint or washed out.
 ---
 
-# Bật tông — making cracks visible
+# Contrast boost — making cracks visible
 
 Enhancement is for **seeing**. Measurements (measure_crack, z-scores, CNR) always use the
 unenhanced data, so never quote values read off an enhanced map.
@@ -21,7 +21,7 @@ unenhanced data, so never quote values read off an enhanced map.
 Start with `detrend`; go to `strong` only if cracks are still faint. Show before/after with
 `enhance_contrast` so the user sees the effect, then keep using the chosen method for that scan.
 
-## Răng cưa (sawtooth) - already removed, the lab's way
+## Sawtooth (Vietnamese "răng cưa") - already removed, the lab's way
 
 Every view except `raw` goes through the lab's anti-sawtooth method (scripts/dataloader.py,
 as used in plot_all_1Hall_heatmaps.py):
