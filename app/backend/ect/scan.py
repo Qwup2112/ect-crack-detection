@@ -51,16 +51,20 @@ def scan_path(sid):
 
 # ---------------------------------------------------------------- reading
 
-def _sawtooth(img, trim=12):
+def sawtooth(img, trim=12):
+    """Row-to-row zig-zag: mean |2nd difference down Y|, the scan turn-arounds left out."""
     f = img[:, trim:-trim] if img.shape[1] > 3 * trim else img
     return float(np.mean(np.abs(f[2:] - 2 * f[1:-1] + f[:-2])))
 
 
-def fix_scan_direction(grid, max_shift=5):
+MAX_LAG_PX = 8         # +-5 px was too short: 19 early_session scans need +6 (none reaches 8)
+
+
+def fix_scan_direction(grid, max_shift=MAX_LAG_PX):
     """Align the right-to-left lines with the left-to-right ones. The probe lags when it
-    reverses (cam_4lop_1: 2 px on 26/28 files) and return lines carry a level offset; the
+    reverses (cam_4lop_1: 2 px on 25/28 files) and return lines carry a level offset; the
     shift minimising the row-to-row zig-zag is kept and levels are matched by medians."""
-    best = None
+    candidates = []
     for k in range(-max_shift, max_shift + 1):
         out = grid.copy()
         odd = np.roll(grid[1::2], k, axis=1)
@@ -70,16 +74,14 @@ def fix_scan_direction(grid, max_shift=5):
             odd[:, k:] = odd[:, [k - 1]]
         offset = float(np.median(odd) - np.median(grid[0::2]))
         out[1::2] = odd - offset
-        s = _sawtooth(out)
-        if best is None or s < best[0]:
-            best = (s, out, k, offset)
-    return best[1], best[2], best[3]
+        candidates.append((sawtooth(out), out, k, offset))
+    _, out, k, offset = min(candidates, key=lambda c: c[0])   # first of the lowest sawtooth
+    return out, k, offset
 
 
-def load_scan(path):
-    """TDMS file -> (grid[Y, X] float, meta). Truncated recordings keep their complete rows
-    only (never padded); meta['warnings'] says what was dropped."""
-    path = Path(path)
+def _read(path):
+    """The recording as stored: (values in recording order, freq_hz, size_x, size_y, truncated
+    rows, warnings). Truncated recordings keep their complete rows only (never padded)."""
     tdms = TdmsFile.read(path)
     groups = {g.name for g in tdms.groups()}
     if META_GROUP not in groups or WAVE_GROUP not in groups:
@@ -87,7 +89,7 @@ def load_scan(path):
     meta = np.asarray(tdms[META_GROUP].channels()[0][:], dtype=float)
     if meta.size < 4:
         raise ValueError(f"{path.name}: metadata channel has {meta.size} values, need 4")
-    freq_hz, sampling, size_x, size_y = meta[:4]
+    freq_hz, _, size_x, size_y = meta[:4]
     size_x, size_y = int(round(size_x)), int(round(size_y))
     raw = np.asarray(tdms[WAVE_GROUP].channels()[0][:], dtype=float)
     warnings, truncated = [], 0
@@ -98,9 +100,32 @@ def load_scan(path):
             raise ValueError(f"{path.name}: only {full} complete scan rows")
         warnings.append(f"file truncated: {truncated} scan row(s) missing, using {full}/{size_y}")
         raw, size_y = raw[:full * size_x], full
+    return raw, float(freq_hz), size_x, size_y, truncated, warnings
+
+
+def raster_steps(path):
+    """How the recording becomes the grid, step by step (for explaining and benchmarking):
+    sequence   - the values as recorded, one long list;
+    recorded   - cut into scan lines, every 2nd line still right-to-left;
+    unmirrored - every 2nd line reversed (the lab's reshape_raster);
+    aligned    - return-line lag and level fixed: the grid load_scan returns."""
+    raw, _, size_x, size_y, _, _ = _read(Path(path))
+    recorded = raw.reshape(size_y, size_x)
+    unmirrored = recorded.copy()
+    unmirrored[1::2] = recorded[1::2, ::-1]
+    aligned, shift, _ = fix_scan_direction(unmirrored)
+    return {"sequence": raw, "recorded": recorded, "unmirrored": unmirrored, "aligned": aligned,
+            "shift_px": shift}
+
+
+def load_scan(path):
+    """TDMS file -> (grid[Y, X] float, meta). Truncated recordings keep their complete rows
+    only (never padded); meta['warnings'] says what was dropped."""
+    path = Path(path)
+    raw, freq_hz, size_x, size_y, truncated, warnings = _read(path)
     grid = raw.reshape(size_y, size_x)
     grid[1::2] = grid[1::2, ::-1]                      # serpentine: un-mirror odd lines
-    grid, shift, offset = fix_scan_direction(grid)
+    grid, shift, _ = fix_scan_direction(grid)
 
     info = parse_name(path)
     pitch = 1.0

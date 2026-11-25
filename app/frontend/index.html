@@ -838,6 +838,8 @@
       .activity-phrase { color: var(--copper-300); background: none; }
     }
   </style>
+  <!-- Interactive figures (hover, pins, profile, rotatable 3D): viewer.js + viewer.css -->
+  <link rel="stylesheet" href="/static/viewer.css">
 </head>
 <body>
   <div class="app-container">
@@ -936,8 +938,13 @@
         </div>
       </header>
 
+      <!-- Toolbar of the interactive viewer (filled by viewer.js) -->
+      <div class="vw-bar" id="viewer-bar" hidden></div>
+
       <!-- 2. Stage -->
       <div class="right-stage-wrapper" id="stage-wrapper">
+        <div class="vw-card" id="viewer-card" hidden></div>
+
         <div class="stage-card" id="stage-card" style="display: none;" title="Click to zoom to 100% / fit">
           <img src="" alt="" class="stage-image" id="stage-image">
         </div>
@@ -962,14 +969,17 @@
     </section>
   </div>
 
+  <script src="/static/viewer.js"></script>
   <script>
     /**
      * ECT Crack Chat - frontend of the desktop app (design from Google AI Studio).
      * Talks to the local backend on the same origin:
      *   POST /api/chat {message, session_id} -> Server-Sent Events:
-     *     session{id} delta{text} text{text} tool{id,name,label,status,ms} image{id,url,title,caption}
+     *     session{id} delta{text} text{text} tool{id,name,label,status,ms} image{id,url,data_url,title,caption}
      *     done{turns,ms,error,detail} error{message}
      *   GET /api/health, POST /api/session/{id}/reset
+     * A figure with a data_url opens in the interactive viewer (viewer.js) on its real numbers;
+     * without one (a custom Python plot) it is shown as a picture.
      * Inside the desktop window, window.pywebview.api opens / saves images as files.
      * No simulated answers: every number and figure comes from the backend's tools.
      */
@@ -978,7 +988,7 @@
 
       // State
       let messages = []; // { role: 'user' | 'assistant' | 'error', content, tools: [{id,name,status,duration}], images: [] }
-      let gallery = [];  // { id, title, url, caption }
+      let gallery = [];  // { id, title, url, data_url, caption }
       let activeImageId = null;
       let isStreaming = false;
       let abortController = null;
@@ -1003,13 +1013,23 @@
       const filmstrip = document.getElementById('filmstrip');
       const filmstripEmpty = document.getElementById('filmstrip-empty');
 
+      const viewer = new EctViewer({
+        bar: document.getElementById('viewer-bar'),
+        card: document.getElementById('viewer-card'),
+        onImage: (show) => {
+          stageCard.style.display = show ? 'flex' : 'none';
+          btnDownloadImage.title = show ? 'Save the PNG to this computer' : 'Save the view as shown (PNG)';
+        }
+      });
+
       const SUGGESTIONS = [
         "Which scan files are there?",
         "Draw the heatmap of file R 1.7V 300k",
         "Auto-crop the border of file R 1.7V 300k",
         "Boost the contrast of cam_4lop_1 R 4V 10k so the cracks stand out",
         "Detect cracks in file R 1.7V 300k",
-        "Compare R and P of cambien 1.3V 200k 145x95"
+        "Compare R and P of cambien 1.3V 200k 145x95",
+        "Explain step by step how file R 1.7V 300k becomes a heatmap"
       ];
 
       // ---------------------------------------------------- safe markdown
@@ -1215,14 +1235,30 @@
         stageImage.src = item.url;
         stageImage.alt = item.title;
         stagePlaceholder.style.display = 'none';
-        stageCard.style.display = 'flex';
         stageCard.classList.remove('zoomed');
+        showFigure(item);
         linkOpenOriginal.href = item.url;
         linkOpenOriginal.classList.remove('disabled');
         btnDownloadImage.href = item.url;
         btnDownloadImage.download = item.id + '.png';
         btnDownloadImage.classList.remove('disabled');
         renderFilmstrip();
+      }
+
+      // Interactive when the figure came with its numbers, else the picture.
+      async function showFigure(item) {
+        if (item.data_url) {
+          try {
+            if (await viewer.load(item.id, item.data_url)) return;
+            if (activeImageId !== item.id) return;         // another figure was chosen while loading
+          } catch (e) {
+            if (activeImageId !== item.id) return;
+            stageCaption.textContent = `Interactive view not available (${e.message}); showing the picture.`;
+          }
+        }
+        viewer.hide();
+        stageCard.style.display = 'flex';
+        btnDownloadImage.title = 'Save the PNG to this computer';
       }
 
       function addImageToGallery(img) {
@@ -1260,9 +1296,15 @@
       });
       btnDownloadImage.addEventListener('click', async (e) => {
         const api = desktopApi();
-        if (!api || !activeImageId) return;
+        if (!activeImageId) return;
+        const item = gallery.find(g => g.id === activeImageId);
+        const view = viewer.snapshot();                    // the map as turned / zoomed / pinned, or null
+        if (!api) {                                        // in a browser: the link downloads the file
+          btnDownloadImage.href = view || item.url;
+          return;
+        }
         e.preventDefault();
-        const r = await api.save_image(activeImageId);
+        const r = await (view ? api.save_view(view, item.title) : api.save_image(activeImageId));
         if (r && r.saved) stageCaption.textContent = 'Saved: ' + r.saved;
         else if (r && r.error) stageCaption.textContent = 'Could not save: ' + r.error;
       });
@@ -1291,7 +1333,7 @@
             }
             break;
           case 'image': {
-            const img = { id: ev.id, title: ev.title || 'Figure', url: ev.url, caption: ev.caption || '' };
+            const img = { id: ev.id, title: ev.title || 'Figure', url: ev.url, data_url: ev.data_url || null, caption: ev.caption || '' };
             msg.images.push(img);
             addImageToGallery(img);
             break;
@@ -1417,6 +1459,7 @@
         messages = [];
         gallery = [];
         activeImageId = null;
+        viewer.forget();
         stageCard.style.display = 'none';
         stagePlaceholder.style.display = 'flex';
         stageTitle.textContent = 'No image selected';

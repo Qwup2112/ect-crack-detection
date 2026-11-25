@@ -19,20 +19,30 @@ needs a number or a figure none of them produces. Never guess a number you could
 - `stages(scan, crop=None) -> dict`: `raw`, `filtered` (lab LPF), `cropped`, `detrended`, `dx`,
   `zmap` (robust z), `margins`, `offset` = (left, top) of the cropped stages in raw px.
   crop=None uses the chat's crop choice for that scan, else 'auto'.
+- `point(scan, x_mm, y_mm) -> dict`: the values at a position exactly as the user reads them on
+  the map: `col`, `row`, `x_mm`, `y_mm` (centre of that scan point), `raw`, `filtered`,
+  `detrended`, `dx`, `z` (the last three are None in the cropped border). Use it for "what is the
+  value at X, Y"; never interpolate, or your number will differ from the one in the panel.
 - `yolo(scan, conf=0.5)`, `threshold(scan, z=2.5)` -> boxes `{x0, y0, x1, y1, conf|score}` in
   ORIGINAL grid px; `labels(scan)` -> draft label boxes; `detect.iou`, `detect.match_labels`,
   `detect.measure_crack(img, box, pitch)`, `detect.cnr(img, box)`, `detect.z_top5(boxes)`.
 - `catalog()` -> list of `{id, session, sensor, amp, freq, size_x, size_y, status}`; use
   only `status == "ok"` (or starting with "truncated", with a warning).
-- `show(fig, title, caption)` -> the figure appears on the right panel. Titles and axis labels
-  in English.
+- `show(fig, title, caption)` -> the figure appears on the right panel as a picture. Titles and
+  axis labels in English.
+- `show_map(values, pitch, offset=(0, 0), title="", cmap="magma", diverging=False, label="", boxes=None,
+  plot="2d", caption="")` -> a 2D array (rows = Y) as an INTERACTIVE map: the user reads every point,
+  zooms, switches to 3D and rotates. Use it for any single map (a custom filter, a difference, a
+  z-map); `label` = the quantity with its unit, `offset` = `st["offset"]` for the cropped stages.
 - `chat` -> this chat's state (crop / enhance choices, last scan, last detections).
 - The working directory is the chat's work folder: save intermediate files there
   (`np.save("x.npy", a)`), they stay for the rest of the chat.
 
 ## Rules
 
-- Coordinates: mm = px * `meta["pitch_mm"]`. Positions you report are in the original grid frame.
+- Coordinates: scan point i covers i to i + 1 times `meta["pitch_mm"]`, so box edges are
+  px * pitch and the position of point i is (i + 0.5) * pitch (as in the panel). Positions you
+  report are in the original grid frame.
 - R and P have different scales (~0.025 vs ~-30): compare sensors with robust z or z_top5,
   never raw values.
 - Print a compact result (at most ~30 lines; a short table is fine) and report only numbers
@@ -62,12 +72,13 @@ ax.set_xlabel("Frequency (kHz)"); ax.set_ylabel("z_top5")
 show(fig, "z_top5 versus frequency - cambien_4lop_2 R", "crack contrast against background noise")
 ```
 
-A map in mm with the detected boxes:
+A map in mm with the detected boxes (interactive):
 
 ```python
-grid, meta = load("R 1.7V 300k"); st = stages(meta["id"]); p = meta["pitch_mm"]
-fig, ax = plt.subplots(figsize=(8, 5))
-render.draw_map(ax, st["detrended"], p, st["offset"], "magma", title="Background removed")
-render.draw_boxes(ax, yolo(meta["id"]), p)
-show(fig, "Background-removed map + YOLO boxes")
+grid, meta = load("R 1.7V 300k"); st = stages(meta["id"])
+show_map(st["detrended"], meta["pitch_mm"], st["offset"], title="Background removed + YOLO boxes",
+         label="amplitude (a.u.)", boxes=yolo(meta["id"]))
 ```
+
+A map next to other plots in one figure (a picture): `render.draw_map(ax, img, pitch, offset, cmap,
+title=...)` and `render.draw_boxes(ax, boxes, pitch)`, then `show(fig, ...)`.

@@ -1,0 +1,23 @@
+# Pylint settings, used by the CI workflow (.github/workflows/pylint.yml) and by local runs:
+#   pylint app
+# Errors (E) and fatal problems (F) fail; warnings, refactoring hints and style notes are only
+# reported. scripts/ is the lab's reference code and is not linted.
+
+[MAIN]
+fail-under=0
+fail-on=E,F
+# Training / export only (app/tools/export_onnx.py). They pull in PyTorch, so CI does not
+# install them.
+ignored-modules=ultralytics,torch,onnx
+# OpenCV loads its compiled core at import time, so pylint cannot see cv2.resize & co.
+generated-members=cv2.*
+
+[FORMAT]
+max-line-length=120
+
+[MESSAGES CONTROL]
+# The code base's own conventions: short math names (H, W, x0, ...), heavy modules imported
+# inside functions on purpose (this PC is short of memory), small helpers without docstrings.
+disable=invalid-name,
+        import-outside-toplevel,
+        missing-function-docstring

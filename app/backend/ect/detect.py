@@ -166,7 +166,7 @@ def _resize_linear(img, size_wh):
         return cv2.resize(img, size_wh, interpolation=cv2.INTER_LINEAR)
     except ImportError:
         from PIL import Image
-        return np.asarray(Image.fromarray(img).resize(size_wh, Image.BILINEAR))
+        return np.asarray(Image.fromarray(img).resize(size_wh, Image.Resampling.BILINEAR))
 
 
 def _letterbox(img, size=YOLO_IMGSZ, stride=32):

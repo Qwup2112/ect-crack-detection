@@ -4,7 +4,8 @@ Event kinds sent to the frontend:
   delta {text}            streamed piece of the assistant's reply
   text {text}             a whole reply block (only when it was not streamed)
   tool {id, name, label, status: start|end|error}   from the hooks
-  image {id, url, title, caption}                   from the tools
+  image {id, url, data_url, title, caption}         from the tools (data_url: the grids behind the
+                                                    figure for the viewer, None for a picture)
   done {turns, ms, error, detail}
   error {message}
 """
@@ -26,7 +27,8 @@ from .tools import SERVER_NAME, TOOL_NAMES, Ctx, build_server
 
 MODEL = os.environ.get("ECT_MODEL", "claude-opus-5-5")
 EFFORT = os.environ.get("ECT_EFFORT", "medium")
-SKILLS = ["auto-analysis", "border-crop", "contrast", "crack-detection", "drawing", "python-analysis"]
+SKILLS = ["auto-analysis", "border-crop", "contrast", "crack-detection", "drawing", "processing-explained",
+          "python-analysis"]
 PROMPT_FILE = Path(__file__).with_name("system_prompt.md")
 
 # One Claude Code CLI process commits ~0.5 GB. With less free commit memory than this it crashes
@@ -66,6 +68,11 @@ AGENT_SETTINGS = json.dumps({
 })
 
 
+# One message from the CLI. A tool result carries each figure preview twice; the SDK's default of
+# 1 MB was passed by a single detailed plot, which ended the chat ("exceeded maximum buffer size").
+MAX_MESSAGE_BYTES = 32 * 1024 * 1024
+
+
 class ChatSession:
     def __init__(self, sid=None):
         self.id = sid or uuid.uuid4().hex[:12]
@@ -98,6 +105,7 @@ class ChatSession:
             include_partial_messages=True,
             hooks=build_hooks(self.ctx),
             max_turns=40,
+            max_buffer_size=MAX_MESSAGE_BYTES,
             stderr=self._cli_stderr,
         )
 

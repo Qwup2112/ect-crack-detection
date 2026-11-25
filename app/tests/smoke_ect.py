@@ -2,10 +2,14 @@
 Run:  .venv\\Scripts\\python -m app.tests.smoke_ect [--yolo]
 Exit code 0 = pass. The dev hook runs it (without --yolo) after edits to app/backend/ect.
 """
+import base64
+import json
 import sys
 import time
 
-from app.backend.ect import scan, process, detect, render
+import numpy as np
+
+from app.backend.ect import scan, process, detect, interactive, render
 
 # Two scans whose behaviour is known from the legacy app (best R scan, a P scan).
 CASES = ["cambien_4lop_2 R 1.7V 300k", "cambien_4lop_2 P 0.3V 20k 145x95"]
@@ -30,6 +34,16 @@ def main():
         img, off, title, cmap, div = render.view_spec(st, "amplitude", meta.get("sensor"))
         data = render.single(img, meta["pitch_mm"], off, title, cmap, div, boxes=boxes)
         assert data[:8] == b"\x89PNG\r\n\x1a\n" and len(data) > 10_000
+        fig = interactive.figure([interactive.map_panel(img, meta["pitch_mm"], off, title, cmap, div, boxes=boxes,
+                                                        readouts=[interactive.readout("raw", st["raw"])])])
+        p = json.loads(json.dumps(fig))["panels"][0]        # what the viewer receives
+        back = np.frombuffer(base64.b64decode(p["f32"]), "<f4").reshape(p["h"], p["w"])
+        assert np.array_equal(back, img.astype("<f4")), f"{sid}: interactive values differ from the map"
+        assert (p["ox"], p["oy"]) == off and len(p["boxes"]) == len(boxes), f"{sid}: interactive frame differs"
+        col, row, pitch = off[0] + 20, off[1] + 15, meta["pitch_mm"]
+        at = interactive.point(st, pitch, (col + 0.5) * pitch, (row + 0.5) * pitch)
+        assert (at["col"], at["row"]) == (col, row) and at["raw"] == st["raw"][row, col] \
+            and at["z"] == st["zmap"][row - off[1], col - off[0]], f"{sid}: point() reads the wrong scan point"
         line = f"{sid}: crop {process.describe_margins(m)}, {len(boxes)} candidates, z_top5 {detect.z_top5(boxes)}"
         if use_yolo:
             yb = detect.yolo_detect(grid)

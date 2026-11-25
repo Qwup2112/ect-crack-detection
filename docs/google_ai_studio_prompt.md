@@ -8,6 +8,11 @@
 4. Restart `run_app.bat`. The new UI works with the existing backend at once; the backend needs
    no change. If you like, give the file to Claude to check and merge.
 
+The interactive figures are separate files (`app/frontend/viewer.js`, `viewer.css`), not part of
+this prompt. A new `index.html` must keep the hooks the current one has: the `viewer.css` and
+`viewer.js` tags, the `viewer-bar` and `viewer-card` elements, and the calls to `EctViewer`
+(`load`, `hide`, `forget`, `snapshot`); without them the figures are still pictures.
+
 In AI Studio's preview the backend is not running, so the UI switches itself to **demo mode**
 (simulated answers and one fake image) so you can judge the design.
 
@@ -86,13 +91,14 @@ BACKEND CONTRACT (same origin, use relative URLs, do not change)
     tool    {id, name, label, status, ms?, error?}   status = "start" | "end" | "error";
             "start" ends the current assistant bubble and adds a tool chip; later events
             with the same id update that chip; text after a tool goes into a NEW bubble
-    image   {id, url, title, caption}    -> show on the right + filmstrip + image chip
+    image   {id, url, data_url, title, caption}   -> show on the right + filmstrip + image chip
+            (data_url: the numbers behind the figure, or null when it is only a picture)
     done    {turns, ms, error, detail}   -> answer finished; if error, show detail in red
     error   {message}                    -> show as a red assistant bubble
-- GET  /api/session/{session_id}/images -> [{id, url, title, caption}] - on load, restore
+- GET  /api/session/{session_id}/images -> [{id, url, data_url, title, caption}] - on load, restore
   the filmstrip of the saved session.
 - POST /api/session/{session_id}/reset  -> called by "New chat", then clear the UI.
-- Images: GET <url> returns a PNG.
+- Images: GET <url> returns a PNG; GET <data_url> returns the figure's grids as JSON (for viewer.js).
 - Keep session_id and the last 60 chat messages (role + text) in localStorage and re-render
   them on load.
 
