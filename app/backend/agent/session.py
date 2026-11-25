@@ -68,6 +68,11 @@ AGENT_SETTINGS = json.dumps({
 })
 
 
+# One message from the CLI. A tool result carries each figure preview twice; the SDK's default of
+# 1 MB was passed by a single detailed plot, which ended the chat ("exceeded maximum buffer size").
+MAX_MESSAGE_BYTES = 32 * 1024 * 1024
+
+
 class ChatSession:
     def __init__(self, sid=None):
         self.id = sid or uuid.uuid4().hex[:12]
@@ -100,6 +105,7 @@ class ChatSession:
             include_partial_messages=True,
             hooks=build_hooks(self.ctx),
             max_turns=40,
+            max_buffer_size=MAX_MESSAGE_BYTES,
             stderr=self._cli_stderr,
         )
 
