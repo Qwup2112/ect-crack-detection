@@ -28,9 +28,13 @@ Claude agent answers in English and its tools draw the figures. The previous Tki
   ECT_PYTHON_TOOL=0 turns it off), sysmem.py (free commit memory).
 - `app/agent_home/` - the agent's working folder: CLAUDE.md (its fixed knowledge) and
   `.claude/skills/` (auto-analysis = do the whole pipeline without asking, border-crop, contrast,
-  crack-detection, drawing, python-analysis). Those are the agent's instructions, not yours;
-  a new skill must also be added to SKILLS in session.py.
-- `app/tools/` - developer scripts (export_onnx.py).
+  crack-detection, drawing, processing-explained, python-analysis). Those are the agent's
+  instructions, not yours; a new skill must also be added to SKILLS in session.py.
+  processing-explained quotes numbers from the benchmark: after changing a processing default,
+  re-run the benchmark and update the numbers there.
+- `app/tools/` - developer scripts: export_onnx.py; benchmark.py (`python -m app.tools.benchmark`,
+  ~40 s, every processing step with its alternatives scored against the draft labels, output in
+  results/benchmark/, gitignored like the other generated results).
 - `app/backend/server.py` - FastAPI, SSE chat stream. Normally started by app/desktop.py on a
   free 127.0.0.1 port inside the desktop program (standalone: port 8765, for debugging).
 - `app/desktop.py` - the program: pywebview window (WebView2), splash, js_api for opening /

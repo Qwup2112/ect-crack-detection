@@ -16,7 +16,9 @@ answer with what it shows and the settings used.
 | "derivative", "dipole", "crack edges" ("đạo hàm", "lưỡng cực") | draw_scan view=dx (or dx_inv) |
 | "remove the background", "detrended" ("trừ nền") | draw_scan view=detrended |
 | "z-map", "deviation" ("bản đồ z", "độ lệch") | draw_scan view=zmap |
-| "6 figures", "full report", "every step" ("báo cáo đầy đủ") | draw_scan view=report |
+| "6 figures", "full report" ("báo cáo đầy đủ") | draw_scan view=report |
+| "how does the scan become a map", "step by step" ("từng bước", "trình tự") | draw_scan view=steps (explain with skill processing-explained) |
+| "3D", "surface", "relief" ("vẽ 3D", "nổi khối") | draw_scan plot=3d with a single-map view; detrended or dx read best |
 | "what does the model see", "YOLO input" | draw_scan view=model_input |
 | "crop the border" ("cắt viền") | crop_border (skill border-crop) |
 | "boost contrast", "make it clearer" ("bật tông", "rõ hơn") | enhance_contrast (skill contrast) |
@@ -31,6 +33,10 @@ answer with what it shows and the settings used.
 ## Conventions
 
 - Axes are scan position in mm; coordinates refer to the original grid (before cropping).
+- 3D surfaces explain (relative strength and shape of each crack); positions and sizes are read
+  from the 2D map. plot=3d works with raw, filtered, cropped, amplitude, detrended, dx, dx_inv and
+  zmap, not with report, model_input or steps.
+- "How" or "why" questions about a step: skill processing-explained.
 - Colours clip at percentiles, so extreme pixels do not wash the map out.
 - For R vs P of one measurement, use compare_scans with both files: the same crop is not shared,
   but the ranking by z_top5 is fair.

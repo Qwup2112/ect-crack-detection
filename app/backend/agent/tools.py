@@ -38,7 +38,7 @@ LABELS = {                               # shown in the chat while a tool runs
     "run_python": "Python analysis",
 }
 
-VIEW_KEYS = sorted(render.VIEWS) + ["report", "model_input"]
+VIEW_KEYS = sorted(render.VIEWS) + ["report", "model_input", "steps"]
 
 
 # ---------------------------------------------------------------- cached data
@@ -201,11 +201,19 @@ def _draw_scan(ctx, a):
     crop = ctx.crop_for(sid, a.get("crop"))
     st = stages(sid, crop)
     view = a.get("view") or "amplitude"
+    plot = (a.get("plot") or "2d").lower()
+    if plot == "3d" and view not in render.VIEWS:
+        raise ValueError(f"plot=3d needs a single-map view ({', '.join(sorted(render.VIEWS))}), not '{view}'")
     pitch, sensor = meta["pitch_mm"], meta.get("sensor")
     enh = a.get("enhance") or ctx.state.setdefault("enhance", {}).get(sid, "none")
     head = f"{scan_label(meta)} — "
     with RENDER_LOCK:
-        if view == "report":
+        if view == "steps":
+            boxes, bnote, _ = _boxes_for(ctx, sid, grid, st, "yolo")
+            data = render.steps(sc.raster_steps(sc.scan_path(sid)), pitch, st, boxes, bnote,
+                                suptitle=head + "from scan to heatmap, step by step")
+            title = head + "from scan to heatmap"
+        elif view == "report":
             items = []
             for k in ("raw", "filtered", "cropped", "amplitude", "dx", "dx_inv"):
                 img, off, t, cm, div = render.view_spec(st, k, sensor)
@@ -232,14 +240,18 @@ def _draw_scan(ctx, a):
             elif overlay in ("yolo", "threshold"):
                 boxes, bnote, _ = _boxes_for(ctx, sid, grid, st, overlay)
                 extra = f" · {len(boxes)} boxes ({bnote})"
-            data = render.single(img, pitch, off, a.get("title") or t, cm, div, cbar, boxes=boxes,
-                                 suptitle=head + f"border crop: {process.describe_margins(st['margins'])}{extra}",
-                                 limits=limits)
-            title = head + (a.get("title") or t)
-    return {"text": f"Drew '{view}' of {sid}. Border crop: {process.describe_margins(st['margins'])}. "
-                    f"Contrast enhancement: {enh}.",
+            suptitle = head + f"border crop: {process.describe_margins(st['margins'])}{extra}"
+            if plot == "3d":
+                data = render.surface(img, pitch, off, cm, div, a.get("title") or t, cbar, boxes=boxes,
+                                      suptitle=suptitle, limits=limits)
+            else:
+                data = render.single(img, pitch, off, a.get("title") or t, cm, div, cbar, boxes=boxes,
+                                     suptitle=suptitle, limits=limits)
+            title = head + (a.get("title") or t) + (" (3D)" if plot == "3d" else "")
+    return {"text": f"Drew '{view}' ({plot.upper()}) of {sid}. Border crop: "
+                    f"{process.describe_margins(st['margins'])}. Contrast enhancement: {enh}.",
             "png": data, "title": title, "scan": sid,
-            "caption": f"{sid} · view {view} · crop {crop} · enhance {enh}"}
+            "caption": f"{sid} · view {view} · {plot.upper()} · crop {crop} · enhance {enh}"}
 
 
 def _crop_border(ctx, a):
@@ -467,10 +479,13 @@ SPECS = [
      {"type": "object", "properties": {"scan": SCAN}, "required": ["scan"]}, _scan_info),
     ("draw_scan", "Draw one view of a scan on the right-hand panel ('vẽ'). Views: raw, filtered, cropped, "
      "amplitude (heatmap of the filtered+cropped map), detrended (background removed), dx / dx_inv (X "
-     "derivative, shows the crack dipole), zmap, report (the 6 standard views), model_input (what YOLO sees). "
-     "overlay draws boxes: yolo, threshold or labels.",
+     "derivative, shows the crack dipole), zmap, report (the 6 standard views), model_input (what YOLO sees), "
+     "steps (how the recording becomes the map: scan path, recorded list, line reversal, filter, crop, "
+     "detection - for explanations). plot: 2d (heatmap, default) or 3d (surface, height = value; single-map "
+     "views only). overlay draws boxes: yolo, threshold or labels.",
      {"type": "object", "properties": {
          "scan": SCAN, "view": {"type": "string", "enum": VIEW_KEYS}, "crop": CROP, "enhance": ENH,
+         "plot": {"type": "string", "enum": ["2d", "3d"]},
          "overlay": {"type": "string", "enum": ["none", "yolo", "threshold", "labels"]},
          "cmap": {"type": "string", "description": "matplotlib colormap name, e.g. magma, viridis, gray, RdBu_r"},
          "title": S}, "required": ["scan"]}, _draw_scan),

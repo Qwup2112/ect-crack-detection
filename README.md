@@ -31,7 +31,7 @@ The PC must be logged in to Claude Code (the `claude` command works). Log: `app/
 | Tool | Job |
 |---|---|
 | `list_scans`, `scan_info` | Browse the catalogue of 110 files (101 readable), parameters, warnings |
-| `draw_scan` | Draw: raw, filtered, border cropped, amplitude/phase map, background removed, dA/dx derivative, z-map, 6-panel report, YOLO input image |
+| `draw_scan` | Draw: raw, filtered, border cropped, amplitude/phase map, background removed, dA/dx derivative, z-map, 6-panel report, YOLO input image, step by step from the recording to the map; any single map as a 2D heatmap or a 3D surface |
 | `crop_border` | Automatic border crop (measured per edge, usually asymmetric) or fixed, showing the cropped bands |
 | `enhance_contrast` | Contrast boost: stretch, background removal, local normalisation, gamma, strong |
 | `detect_cracks` | Crack detection with YOLO (runs on ONNX, ~0.4 s, light on memory; falls back to the threshold detector if it cannot run), scored against the labels |
@@ -56,6 +56,19 @@ lines of the zig-zag scan (`reshape_raster`), align the forward and return lines
 (`LPF`, Hamming FIR of order 24) down each column, then display with bilinear interpolation.
 Measured on 3 files, 20–30% of the sawtooth is left compared with reversing the lines only.
 
+## Benchmark of the processing steps
+
+`.venv\Scripts\python -m app.tools.benchmark` (~40 s) runs every step with its alternatives on
+all readable scans and scores them against the draft labels: grid reconstruction (line reversal,
+lag fix), denoising (none / median / Gaussian / FIR / FIR + median), border crop (none / fixed /
+auto at three thresholds), step order and background removal, detection (YOLO at three
+confidences, the threshold detector at three z) and 2D vs 3D drawing. It writes
+`results/benchmark/REPORT.md`, `benchmark.json`, one CSV per step and the figures. Main results
+(2026-10-28): the auto crop doubles threshold-detector F1 (0.20 to 0.41) without cutting a labelled
+crack; the 8 px Gaussian background removal beats row/column medians (0.41 vs 0.13-0.29); the
+column FIR removes ~80% of the zig-zag and keeps 91-96% of the crack peak; YOLO finds 825/825
+labelled cracks, but it was trained on those scans.
+
 ## Harness: memory, tools, hooks, skills
 
 - **Memory**: `app/agent_home/CLAUDE.md` (fixed knowledge about the dataset) +
@@ -69,7 +82,8 @@ Measured on 3 files, 20–30% of the sawtooth is left compared with reversing th
   status to the UI and writes the log; UserPromptSubmit adds the memory to every question.
 - **Skills** (`app/agent_home/.claude/skills/`): teach the assistant the **automatic end-to-end
   analysis** (`auto-analysis`), **border cropping** (`border-crop`), **contrast boost**
-  (`contrast`), **crack detection** (`crack-detection`), **which figure to draw** (`drawing`)
+  (`contrast`), **crack detection** (`crack-detection`), **which figure to draw** (`drawing`),
+  **how and why each processing step works, with the benchmark numbers** (`processing-explained`)
   and **in-depth analysis with Python** (`python-analysis`).
 
 When developing with Claude Code: `CLAUDE.md` at the project root, `.claude/settings.json` blocks
@@ -109,6 +123,7 @@ app/desktop.py        the desktop program: WebView2 window + backend start-up
 app/frontend/         the UI (Google AI Studio design, connected to the backend)
 app/assets/           icon, shortcut script
 app/state/            images, memory, logs at run time (not in git)
+app/tools/           developer scripts: export_onnx.py, benchmark.py
 docs/                 the Google AI Studio prompt
 ```
 
