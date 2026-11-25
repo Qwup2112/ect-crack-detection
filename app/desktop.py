@@ -78,7 +78,7 @@ class Api:
         p, _ = self._image(iid)
         if p is None:
             return {"error": "image not found"}
-        os.startfile(p)
+        os.startfile(p)                             # pylint: disable=no-member  # Windows only, CI is Linux
         return {"opened": str(p)}
 
     def save_image(self, iid):
