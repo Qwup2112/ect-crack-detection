@@ -33,6 +33,10 @@ answer with what it shows and the settings used.
 ## Conventions
 
 - Axes are scan position in mm; coordinates refer to the original grid (before cropping).
+- Maps are interactive in the panel: hover = coordinates and values, click = pin, and the user can
+  switch 2D/3D and rotate the surface there. "Turn it", "rotate" ("xoay", "đổi hướng"), "which value
+  here" ("điểm này bao nhiêu"): tell the user to do it in the panel (drag to rotate in 3D, hover to
+  read) instead of drawing again.
 - 3D surfaces explain (relative strength and shape of each crack); positions and sizes are read
   from the 2D map. plot=3d works with raw, filtered, cropped, amplitude, detrended, dx, dx_inv and
   zmap, not with report, model_input or steps.

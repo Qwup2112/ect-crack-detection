@@ -2,7 +2,9 @@
 
 Each tool computes with app.backend.ect in a worker thread, saves any figure to the image
 store, pushes it to the right-hand panel through the session's event queue, and returns a
-text summary plus a small preview of the figure so the model can see what it drew.
+text summary plus a small preview of the figure so the model can see what it drew. A figure's
+"data" (ect/interactive.py) is what the panel shows interactively; the PNG is the same figure
+for saving and for the model.
 run_python (python_tool.py) runs the agent's own analysis code in a guarded child process.
 """
 import asyncio
@@ -14,7 +16,7 @@ from functools import lru_cache
 import numpy as np
 from claude_agent_sdk import create_sdk_mcp_server, tool
 
-from ..ect import detect, process, render, scan as sc
+from ..ect import detect, interactive, process, render, scan as sc
 from . import images, memory, python_tool
 from .sysmem import free_commit_mb
 
@@ -117,11 +119,12 @@ async def _run(ctx, name, fn, args):
         return _error(f"{type(e).__name__}: {e}")
     figs = out.get("figures") or []
     if out.get("png"):
-        figs = [{"png": out["png"], "title": out.get("title", LABELS[name]), "caption": out.get("caption", "")}]
+        figs = [{"png": out["png"], "title": out.get("title", LABELS[name]), "caption": out.get("caption", ""),
+                 "data": out.get("data")}]
     shown, previews = [], []
     for f in figs:
         meta = images.save(f["png"], f["title"], f.get("caption", ""), scan=out.get("scan"), tool=name,
-                           session=ctx.session_id)
+                           session=ctx.session_id, data=f.get("data"))
         ctx.state["last_image"] = meta["id"]
         await ctx.emit("image", meta)
         shown.append(f"{meta['title']} (id {meta['id']})")
@@ -195,6 +198,20 @@ def _boxes_for(ctx, sid, grid, st, method, conf=None, z=None):
     return boxes, note, method
 
 
+def _readouts(st, view, enhanced=False):
+    """The other values of the same point, shown next to the mapped one: raw reading, filtered
+    reading, z. The one the map already shows is left out."""
+    stage = render.VIEWS[view][3]
+    out = []
+    if stage != "raw":
+        out.append(interactive.readout("raw", st["raw"]))
+    if enhanced or stage not in ("filtered", "cropped"):
+        out.append(interactive.readout("filtered", st["filtered"]))
+    if stage != "zmap":
+        out.append(interactive.readout("z", st["zmap"], st["offset"]))
+    return out
+
+
 def _draw_scan(ctx, a):
     sid = sc.resolve(a["scan"])
     grid, meta = load(sid)
@@ -210,22 +227,28 @@ def _draw_scan(ctx, a):
     with RENDER_LOCK:
         if view == "steps":
             boxes, bnote, _ = _boxes_for(ctx, sid, grid, st, "yolo")
-            data = render.steps(sc.raster_steps(sc.scan_path(sid)), pitch, st, boxes, bnote,
-                                suptitle=head + "from scan to heatmap, step by step")
+            rs, sub = sc.raster_steps(sc.scan_path(sid)), head + "from scan to heatmap, step by step"
+            data = render.steps(rs, pitch, st, boxes, bnote, suptitle=sub)
+            fig = interactive.steps(rs, pitch, st, boxes, bnote, sub)
             title = head + "from scan to heatmap"
         elif view == "report":
-            items = []
+            items, maps = [], []
             for k in ("raw", "filtered", "cropped", "amplitude", "dx", "dx_inv"):
                 img, off, t, cm, div = render.view_spec(st, k, sensor)
                 items.append({"img": img, "pitch": pitch, "offset": off, "title": t, "cmap": cm, "diverging": div})
+                maps.append(interactive.map_panel(img, pitch, off, t, cm, div, render.quantity(k, sensor), link="grid"))
             data = render.panels(items, ncols=3, suptitle=head + "the 6 standard maps", width=5.0)
+            fig = interactive.figure(maps, head + "the 6 standard maps", ncols=3)
             title = head + "6-panel report"
         elif view == "model_input":
-            data = render.rgb(detect.model_image(grid), pitch, "YOLO input image: R = background-removed signal, G = d/dx, B = d/dy")
+            t, rgb = "YOLO input image: R = background-removed signal, G = d/dx, B = d/dy", detect.model_image(grid)
+            data = render.rgb(rgb, pitch, t)
+            fig = interactive.figure([interactive.rgb_panel(rgb, pitch, t, ("R background removed", "G d/dx", "B d/dy"))],
+                                     head + "what the model sees")
             title = head + "model input image"
         else:
             img, off, t, cm, div = render.view_spec(st, view, sensor)
-            limits, cbar = None, ("phase (a.u.)" if sensor == "P" else "amplitude (a.u.)")
+            limits, cbar = None, render.quantity(view, sensor)
             if enh != "none" and not div:
                 img, edesc = process.enhance(img, enh)
                 limits, cbar, t = (0.0, 1.0), "contrast (0–1)", f"{t} · {edesc}"
@@ -241,6 +264,9 @@ def _draw_scan(ctx, a):
                 boxes, bnote, _ = _boxes_for(ctx, sid, grid, st, overlay)
                 extra = f" · {len(boxes)} boxes ({bnote})"
             suptitle = head + f"border crop: {process.describe_margins(st['margins'])}{extra}"
+            panel = interactive.map_panel(img, pitch, off, a.get("title") or t, cm, div, cbar, limits, boxes,
+                                          readouts=_readouts(st, view, enh != "none" and not div), name=view)
+            fig = interactive.figure([panel], suptitle, mode="3d" if plot == "3d" else "2d")
             if plot == "3d":
                 data = render.surface(img, pitch, off, cm, div, a.get("title") or t, cbar, boxes=boxes,
                                       suptitle=suptitle, limits=limits)
@@ -250,7 +276,7 @@ def _draw_scan(ctx, a):
             title = head + (a.get("title") or t) + (" (3D)" if plot == "3d" else "")
     return {"text": f"Drew '{view}' ({plot.upper()}) of {sid}. Border crop: "
                     f"{process.describe_margins(st['margins'])}. Contrast enhancement: {enh}.",
-            "png": data, "title": title, "scan": sid,
+            "png": data, "data": fig, "title": title, "scan": sid,
             "caption": f"{sid} · view {view} · {plot.upper()} · crop {crop} · enhance {enh}"}
 
 
@@ -272,19 +298,26 @@ def _crop_border(ctx, a):
     ctx.state.setdefault("crop", {})[sid] = crop
     H, W = filtered.shape
     keep = (m["left"] * pitch, m["top"] * pitch, (W - m["right"]) * pitch, (H - m["bottom"]) * pitch)
+    sub = (f"{scan_label(meta)} — {'automatic' if mode != 'fixed' else 'fixed'} border crop: "
+           f"{process.describe_margins(m)}")
+    bands, off = render.crop_bands(filtered.shape, m, pitch), (m["left"], m["top"])
     with RENDER_LOCK:
         data = render.panels([
             {"img": filtered, "pitch": pitch, "title": "Before: red bands are the cropped border", "cmap": "viridis",
-             "shade": render.crop_bands(filtered.shape, m, pitch), "rect": keep},
-            {"img": cropped, "pitch": pitch, "offset": (m["left"], m["top"]), "title": "After border crop",
-             "cmap": "magma"},
-        ], ncols=2, suptitle=f"{scan_label(meta)} — {'automatic' if mode != 'fixed' else 'fixed'} border crop: "
-                             f"{process.describe_margins(m)}")
+             "shade": bands, "rect": keep},
+            {"img": cropped, "pitch": pitch, "offset": off, "title": "After border crop", "cmap": "magma"},
+        ], ncols=2, suptitle=sub)
+    label = render.quantity("filtered", meta.get("sensor"))
+    fig = interactive.figure([
+        interactive.map_panel(filtered, pitch, title="Before: red bands are the cropped border", cmap="viridis",
+                              label=label, shade=bands, rect=keep, link="grid", name="before"),
+        interactive.map_panel(cropped, pitch, off, "After border crop", label=label, link="grid", name="after"),
+    ], sub)
     mm = {k: round(v * pitch, 1) for k, v in m.items()}
     return {"text": f"Border crop of {sid}: {process.describe_margins(m)} (mm: {mm}). Remaining grid "
                     f"{cropped.shape[1]} x {cropped.shape[0]} points. From now on in this chat, figures of "
                     f"this scan use this crop.",
-            "png": data, "title": f"{scan_label(meta)} — border crop", "scan": sid,
+            "png": data, "data": fig, "title": f"{scan_label(meta)} — border crop", "scan": sid,
             "caption": f"margins px {m}"}
 
 
@@ -303,9 +336,15 @@ def _enhance_contrast(ctx, a):
             {"img": enh, "pitch": p, "offset": off, "title": f"After: {desc}", "cmap": a.get("cmap") or "magma",
              "limits": (0.0, 1.0)},
         ], ncols=2, suptitle=f"{scan_label(meta)} — contrast boost")
+    fig = interactive.figure([
+        interactive.map_panel(img, p, off, "Before (filtered + border cropped)", link="grid", name="before",
+                              label=render.quantity("amplitude", meta.get("sensor"))),
+        interactive.map_panel(enh, p, off, f"After: {desc}", a.get("cmap") or "magma", label="contrast (0–1)",
+                              limits=(0.0, 1.0), link="grid", name="after"),
+    ], f"{scan_label(meta)} — contrast boost")
     return {"text": f"Contrast boost of {sid} with '{method}': {desc}. Kept for this scan in this chat: later "
                     f"amplitude maps use the same enhancement (unless you ask otherwise).",
-            "png": data, "title": f"{scan_label(meta)} — contrast boost ({method})", "scan": sid,
+            "png": data, "data": fig, "title": f"{scan_label(meta)} — contrast boost ({method})", "scan": sid,
             "caption": desc}
 
 
@@ -325,15 +364,19 @@ def _detect_cracks(ctx, a):
                  + (" This scan is in YOLO's training set, so the score is optimistic." if used == "yolo" and detect.in_training_set(sid) else ""))
     ctx.state.setdefault("detections", {})[sid] = boxes
     view = a.get("view") or "amplitude"
-    img, off, t, cm, div = render.view_spec(st, view if view in render.VIEWS else "amplitude", meta.get("sensor"))
-    limits = None
+    view = view if view in render.VIEWS else "amplitude"
+    img, off, t, cm, div = render.view_spec(st, view, meta.get("sensor"))
+    limits, label = None, render.quantity(view, meta.get("sensor"))
     enh = ctx.state.setdefault("enhance", {}).get(sid, "none")
-    if enh != "none" and not div:
+    enhanced = enh != "none" and not div
+    if enhanced:
         img, _ = process.enhance(img, enh)
-        limits = (0.0, 1.0)
+        limits, label = (0.0, 1.0), "contrast (0–1)"
+    t, sub = f"{t} · {len(boxes)} cracks", f"{scan_label(meta)} — {note}"
     with RENDER_LOCK:
-        data = render.single(img, pitch, off, f"{t} · {len(boxes)} cracks", cm, div, boxes=boxes, missed=missed,
-                             suptitle=f"{scan_label(meta)} — {note}", limits=limits)
+        data = render.single(img, pitch, off, t, cm, div, boxes=boxes, missed=missed, suptitle=sub, limits=limits)
+    fig = interactive.figure([interactive.map_panel(img, pitch, off, t, cm, div, label, limits, boxes, missed,
+                                                    readouts=_readouts(st, view, enhanced), name=view)], sub)
     rows = []
     for i, b in enumerate(boxes, 1):
         d = detect.describe_box(b, pitch)
@@ -342,7 +385,7 @@ def _detect_cracks(ctx, a):
         rows.append(f"#{i}: X {d['x_mm']} mm, Y {d['y_mm']} mm, box {d['w_mm']} x {d['h_mm']} mm, {s}{m}")
     return {"text": f"Detection on {sid} with {note}: {len(boxes)} cracks.\n" + "\n".join(rows)
                     + (f"\n{score}" if score else "") + "\nCoordinates in mm of the original grid (before the border crop).",
-            "png": data, "title": f"{scan_label(meta)} — {len(boxes)} cracks", "scan": sid, "caption": note}
+            "png": data, "data": fig, "title": f"{scan_label(meta)} — {len(boxes)} cracks", "scan": sid, "caption": note}
 
 
 def _measure_crack(ctx, a):
@@ -371,8 +414,15 @@ def _measure_crack(ctx, a):
     m = detect.measure_crack(img, box, pitch)
     if not m:
         raise ValueError("this area is too small or has no signal to measure")
+    t = f"Crack #{i}: length {m['length_mm']} mm, width {m['width_mm']} mm"
     with RENDER_LOCK:
-        data = render.measure_figure(img, pitch, (0, 0), box, m, f"Crack #{i}: length {m['length_mm']} mm, width {m['width_mm']} mm")
+        data = render.measure_figure(img, pitch, (0, 0), box, m, t)
+    x0, y0, x1, y1 = render.measure_window(img.shape, (0, 0), box)
+    fig = interactive.figure([interactive.map_panel(
+        img, pitch, title=t, label=render.quantity("filtered", meta.get("sensor")), name="filtered",
+        limits=process.percentile_limits(img[y0:y1, x0:x1]), boxes=boxes, lines=render.measure_lines(m),
+        window=[v * pitch for v in (x0, y0, x1, y1)], readouts=_readouts(st, "filtered"))],
+        f"{scan_label(meta)} — crack #{i} measurement")
     flags = []
     if not m["reliable"]:
         flags.append("weak signal, or it fills almost the whole box: the measurement is uncertain")
@@ -383,7 +433,7 @@ def _measure_crack(ctx, a):
                     f"{m['angle_deg']}° (runs along {m['along']}), centre ({m['centre_mm'][0]}, {m['centre_mm'][1]}) mm, "
                     f"SNR {m['snr']}. Depth cannot be estimated without a calibration."
                     + ("\nNote: " + "; ".join(flags) if flags else ""),
-            "png": data, "title": f"{scan_label(meta)} — crack #{i} measurement", "scan": sid,
+            "png": data, "data": fig, "title": f"{scan_label(meta)} — crack #{i} measurement", "scan": sid,
             "caption": "cyan axis = length, orange = width"}
 
 
@@ -393,7 +443,7 @@ def _compare_scans(ctx, a):
         raise ValueError(f"compare 2 to {MAX_COMPARE} scans")
     view = a.get("view") or "amplitude"
     enh = a.get("enhance") or "none"
-    items, rows = [], []
+    items, rows, maps = [], [], []
     for sid in ids:
         grid, meta = load(sid)
         st = stages(sid, ctx.crop_for(sid, a.get("crop")))
@@ -405,15 +455,20 @@ def _compare_scans(ctx, a):
         boxes, _ = detect.threshold_detect(st["cropped"], st["offset"])
         items.append({"img": img, "pitch": meta["pitch_mm"], "offset": off, "cmap": cm, "diverging": div,
                       "title": scan_label(meta), "limits": lim})
+        maps.append(interactive.map_panel(
+            img, meta["pitch_mm"], off, scan_label(meta), cm, div, limits=lim,
+            label="contrast (0–1)" if lim else render.quantity(view, meta.get("sensor")),
+            link=f"{meta['session']} {meta['size_x']}x{meta['size_y']} {meta['pitch_mm']:.4f}"))
         rows.append((detect.z_top5(boxes), len(boxes), sid, scan_label(meta)))
     with RENDER_LOCK:
-        data = render.panels(items, ncols=2 if len(items) <= 4 else 3, width=5.0,
-                             suptitle=f"Comparing {len(items)} scans — {view}")
+        ncols, sub = 2 if len(items) <= 4 else 3, f"Comparing {len(items)} scans — {view}"
+        data = render.panels(items, ncols=ncols, width=5.0, suptitle=sub)
     rows.sort(reverse=True)
     table = "\n".join(f"{k}. {r[3]} ({r[2]}): z_top5 {r[0]}, {r[1]} candidates" for k, r in enumerate(rows, 1))
     return {"text": "Ranking by z_top5 (contrast of the 5 strongest candidates against the scan's own background "
                     "noise, a fair comparison across R and P):\n" + table,
-            "png": data, "title": f"Comparison of {len(items)} scans", "scan": ids[0],
+            "png": data, "data": interactive.figure(maps, sub, ncols=ncols),
+            "title": f"Comparison of {len(items)} scans", "scan": ids[0],
             "caption": ", ".join(ids)}
 
 
@@ -424,11 +479,16 @@ def _profile_line(ctx, a):
     view = a.get("view") or "amplitude"
     img, off, t, cm, div = render.view_spec(st, view, meta.get("sensor"))
     along = (a.get("along") or "X").upper()
+    pos = float(a["position_mm"])
     with RENDER_LOCK:
-        data = render.profile_figure(img, meta["pitch_mm"], off, along, float(a["position_mm"]), t, cm, div)
+        data = render.profile_figure(img, meta["pitch_mm"], off, along, pos, t, cm, div)
+    fig = interactive.figure([interactive.map_panel(img, meta["pitch_mm"], off, t, cm, div,
+                                                    render.quantity(view, meta.get("sensor")),
+                                                    readouts=_readouts(st, view), name=view)],
+                             f"{scan_label(meta)} — 1D profile", profile={"along": along, "pos": pos})
     return {"text": f"{'Horizontal profile (along X)' if along == 'X' else 'Vertical profile (along Y)'} at "
                     f"{'Y' if along == 'X' else 'X'} = {a['position_mm']} mm on '{view}' of {sid}.",
-            "png": data, "title": f"{scan_label(meta)} — 1D profile", "scan": sid, "caption": view}
+            "png": data, "data": fig, "title": f"{scan_label(meta)} — 1D profile", "scan": sid, "caption": view}
 
 
 def _run_python(ctx, a):
@@ -439,7 +499,8 @@ def _run_python(ctx, a):
     chat = {k: ctx.state.get(k) for k in ("crop", "enhance", "last_scan", "detections")}
     out, figs, secs, timed_out = python_tool.run(a["code"], ctx.session_id, chat)
     work = python_tool.work_dir(ctx.session_id)
-    figures = [{"png": (work / f["file"]).read_bytes(), "title": f["title"], "caption": f.get("caption", "")}
+    figures = [{"png": (work / f["file"]).read_bytes(), "title": f["title"], "caption": f.get("caption", ""),
+                "data": python_tool.figure_data(work, f)}
                for f in figs if (work / f["file"]).exists()]
     head = f"run_python ({secs:.1f} s{', TIMED OUT' if timed_out else ''}). Work folder: {work}\n"
     return {"text": head + out, "figures": figures, "scan": ctx.state.get("last_scan")}
@@ -482,7 +543,8 @@ SPECS = [
      "derivative, shows the crack dipole), zmap, report (the 6 standard views), model_input (what YOLO sees), "
      "steps (how the recording becomes the map: scan path, recorded list, line reversal, filter, crop, "
      "detection - for explanations). plot: 2d (heatmap, default) or 3d (surface, height = value; single-map "
-     "views only). overlay draws boxes: yolo, threshold or labels.",
+     "views only). The user can switch any map between 2D and 3D, rotate it and read every point in the "
+     "panel without another call. overlay draws boxes: yolo, threshold or labels.",
      {"type": "object", "properties": {
          "scan": SCAN, "view": {"type": "string", "enum": VIEW_KEYS}, "crop": CROP, "enhance": ENH,
          "plot": {"type": "string", "enum": ["2d", "3d"]},
@@ -543,10 +605,12 @@ if python_tool.ENABLED:
          f"{python_tool.TIMEOUT_S} s, ~5 s start-up). Preloaded: np, scipy, ndimage, signal, stats, plt, the ect "
          "modules sc / process / detect / render, and helpers: load(scan) -> (grid, meta); stages(scan, crop=None) "
          "-> dict raw/filtered/cropped/detrended/dx/zmap/margins/offset (crop None = this chat's choice); "
+         "point(scan, x_mm, y_mm) -> the values at one position, as the user reads them on the map; "
          "yolo(scan, conf=0.5) and threshold(scan, z=2.5) -> boxes {x0,y0,x1,y1,...} in original grid px; "
          "labels(scan); catalog(); show(fig, title, caption) puts a matplotlib figure on the right panel "
-         "(English title). print() what you need to read back. The working directory is this chat's work "
-         "folder: files can be written only there (kept for the chat); data/ and labels are read-only; no "
+         "(English title) as a picture; show_map(values, pitch, offset, title, cmap, diverging, label, boxes, "
+         "plot='2d'|'3d') puts a 2D array there as an interactive map. print() what you need to read back. "
+         "The working directory is this chat's work folder: files can be written only there (kept for the chat); data/ and labels are read-only; no "
          "network, no subprocesses. Load skill python-analysis before the first use.",
          {"type": "object", "properties": {
              "code": {"type": "string", "description": "Python source to run"},

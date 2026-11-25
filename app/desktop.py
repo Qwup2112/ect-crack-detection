@@ -24,6 +24,7 @@ LOG = STATE / "desktop.log"
 _log = open(LOG, "a", encoding="utf-8", buffering=1)
 sys.stdout = sys.stderr = _log
 
+import base64        # noqa: E402
 import json          # noqa: E402
 import shutil        # noqa: E402
 import socket        # noqa: E402
@@ -85,17 +86,32 @@ class Api:
         p, meta = self._image(iid)
         if p is None:
             return {"error": "image not found"}
-        title = meta.get("title") or p.stem
-        name = "".join(c if c.isalnum() or c in " ._-" else "_" for c in title).strip()[:80] or p.stem
+        dest = self._ask_dest(meta.get("title") or p.stem)
+        if dest is None:
+            return {"cancelled": True}
+        shutil.copyfile(p, dest)
+        return {"saved": dest}
+
+    def save_view(self, data_url, title):
+        """Save what the interactive viewer shows now (a PNG data: URL) where the user chooses."""
+        prefix = "data:image/png;base64,"
+        if not str(data_url).startswith(prefix):
+            return {"error": "not a PNG image"}
+        png = base64.b64decode(data_url[len(prefix):])
+        dest = self._ask_dest(str(title) or "ECT view")
+        if dest is None:
+            return {"cancelled": True}
+        Path(dest).write_bytes(png)
+        return {"saved": dest}
+
+    def _ask_dest(self, title):
+        name = "".join(c if c.isalnum() or c in " ._-" else "_" for c in title).strip()[:80] or "ect_scan"
         res = self._window.create_file_dialog(webview.FileDialog.SAVE, directory=str(Path.home() / "Pictures"),
                                               save_filename=name + ".png", file_types=("PNG (*.png)",))
         if not res:
-            return {"cancelled": True}
+            return None
         dest = res if isinstance(res, str) else res[0]
-        if not dest.lower().endswith(".png"):
-            dest += ".png"
-        shutil.copyfile(p, dest)
-        return {"saved": dest}
+        return dest if dest.lower().endswith(".png") else dest + ".png"
 
 
 def _free_port():

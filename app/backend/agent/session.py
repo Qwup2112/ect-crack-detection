@@ -4,7 +4,8 @@ Event kinds sent to the frontend:
   delta {text}            streamed piece of the assistant's reply
   text {text}             a whole reply block (only when it was not streamed)
   tool {id, name, label, status: start|end|error}   from the hooks
-  image {id, url, title, caption}                   from the tools
+  image {id, url, data_url, title, caption}         from the tools (data_url: the grids behind the
+                                                    figure for the viewer, None for a picture)
   done {turns, ms, error, detail}
   error {message}
 """

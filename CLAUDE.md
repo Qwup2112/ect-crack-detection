@@ -20,7 +20,8 @@ Claude agent answers in English and its tools draw the figures. The previous Tki
   Reference only; the app re-implements what it needs with scipy.
 - `app/backend/ect/` - processing library, pure functions: scan.py (read, serpentine fix,
   catalogue, name resolution), process.py (lpf, crop, detrend, enhance), detect.py (YOLO,
-  threshold, measure, labels), render.py (matplotlib PNGs in mm).
+  threshold, measure, labels), render.py (matplotlib PNGs in mm), interactive.py (the same figures
+  as data: whole float32 grids, never clipped or resampled, for the viewer).
 - `app/backend/agent/` - the chat agent on the Claude Agent SDK: tools.py (MCP tools), hooks.py
   (PreToolUse/PostToolUse/UserPromptSubmit), memory.py, session.py, system_prompt.md,
   python_tool.py (run_python: the agent's own code in a child process; an audit hook limits
@@ -42,6 +43,12 @@ Claude agent answers in English and its tools draw the figures. The previous Tki
 - `app/frontend/index.html` - the user's Google AI Studio design, connected to the backend. Its
   original "local simulation" (fake heatmaps and invented numbers) was removed on purpose; never
   bring back simulated results.
+- `app/frontend/viewer.js` + `viewer.css` - the interactive figures on the right (plain JS, no
+  library, offline): hover readout, pins, zoom, profile, 2D/3D. The 3D is a software renderer with
+  a depth buffer, on purpose (no GPU, exact picking). Every number comes from interactive.py's
+  grids. A tool that draws a map must return both `png` (for the model, saving and the filmstrip)
+  and `data` (interactive.figure); a figure without `data` is shown as a picture. The data is
+  stored as `<id>.data.gz` next to the PNG and served at /api/images/<id>/data.
 - `app/state/` - runtime images, memory.json, logs, run_python work folders (gitignored).
 
 ## Run and test
@@ -75,7 +82,9 @@ Claude agent answers in English and its tools draw the figures. The previous Tki
 - Run the server without `--reload`: the SDK needs the Proactor event loop on Windows.
 - Anti-sawtooth is the lab's method: reshape_raster + direction alignment + LPF (Hamming FIR,
   order 24, cutoff 0.3, pad 50, delay removed) down each column + median 3; bilinear display.
-- Coordinates: boxes and mm values are in the ORIGINAL grid frame (before crop) everywhere.
+- Coordinates: boxes and mm values are in the ORIGINAL grid frame (before crop) everywhere. Scan
+  point i covers [i, i + 1) x pitch; its position is the centre, (i + 0.5) x pitch (render.cell_of,
+  viewer.js and the profiles agree on this).
 - The frontend contract (SSE events: session, delta, text, tool, image, done, error and the
   /api routes) is shared with docs/google_ai_studio_prompt.md - change both together.
 - Everything is English: UI text, figure titles and labels, tool results, agent replies, code,

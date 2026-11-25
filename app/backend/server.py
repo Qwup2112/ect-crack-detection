@@ -44,8 +44,17 @@ async def lifespan(app):
         await s.close()
 
 
+class FreshStatic(StaticFiles):
+    """Static files revalidated on every load, so an updated viewer.js is never served stale."""
+
+    async def get_response(self, path, scope):
+        r = await super().get_response(path, scope)
+        r.headers["Cache-Control"] = "no-cache"
+        return r
+
+
 app = FastAPI(title="ECT crack chat", lifespan=lifespan)
-app.mount("/static", StaticFiles(directory=FRONTEND), name="static")
+app.mount("/static", FreshStatic(directory=FRONTEND), name="static")
 
 
 class ChatIn(BaseModel):
@@ -112,6 +121,15 @@ def image(iid: str):
     if p is None:
         raise HTTPException(404)
     return FileResponse(p, media_type="image/png")
+
+
+@app.get("/api/images/{iid}/data")
+def image_data(iid: str):
+    """The numbers behind a figure (ect/interactive.py), stored gzipped."""
+    p = images.data_path_of(iid)
+    if p is None:
+        raise HTTPException(404)
+    return FileResponse(p, media_type="application/json", headers={"Content-Encoding": "gzip"})
 
 
 @app.get("/api/scans")

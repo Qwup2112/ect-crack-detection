@@ -34,6 +34,16 @@ def signal_name(sensor):
     return "Phase" if sensor == "P" else "Amplitude"
 
 
+def quantity(view, sensor):
+    """What the numbers of a view are, with the unit (colour-bar label, readouts)."""
+    name, stage = signal_name(sensor).lower(), VIEWS[view][3]
+    if stage == "zmap":
+        return "z (robust sigmas)"
+    if stage == "dx":
+        return f"{'-' if view == 'dx_inv' else ''}d({name})/dx (a.u. per point)"
+    return f"{name} (a.u.)"
+
+
 def png(fig, dpi=130):
     buf = io.BytesIO()
     fig.savefig(buf, format="png", dpi=dpi, bbox_inches="tight")
@@ -69,7 +79,8 @@ def _extent(shape, offset, pitch):
     return [ox * pitch, (ox + W) * pitch, (oy + H) * pitch, oy * pitch]
 
 
-def _limits(img, diverging, limits=None, clip_pct=2.0):
+def color_limits(img, diverging, limits=None, clip_pct=2.0):
+    """The values at the two ends of the colour scale."""
     if diverging:
         lim = float(np.nanpercentile(np.abs(img), 99)) or float(np.nanmax(np.abs(img))) or 1.0
         return -lim, lim
@@ -79,7 +90,7 @@ def _limits(img, diverging, limits=None, clip_pct=2.0):
 def draw_map(ax, img, pitch, offset=(0, 0), cmap="magma", diverging=False, title="",
              cbar_label="", clip_pct=2.0, colorbar=True, limits=None):
     """One map in mm, colour clipped at percentiles (±99th |value| when diverging)."""
-    lo, hi = _limits(img, diverging, limits, clip_pct)
+    lo, hi = color_limits(img, diverging, limits, clip_pct)
     kw = {"norm": TwoSlopeNorm(vcenter=0.0, vmin=lo, vmax=hi)} if diverging else {"vmin": lo, "vmax": hi}
     im = ax.imshow(img, cmap=cmap, extent=_extent(img.shape, offset, pitch),
                    interpolation="bilinear", aspect="equal", **kw)
@@ -177,6 +188,11 @@ def crop_bands(shape, m, pitch):
     return b
 
 
+def cell_of(pos_mm, pitch):
+    """Index of the scan point that covers a position: point i spans [i, i + 1) * pitch mm."""
+    return int(np.floor(pos_mm / pitch + 1e-9))
+
+
 def profile_figure(img, pitch, offset, along, pos_mm, title, cmap, diverging):
     """Map with the cut line, and the values along it."""
     H, W = img.shape
@@ -184,7 +200,7 @@ def profile_figure(img, pitch, offset, along, pos_mm, title, cmap, diverging):
     fig, (a1, a2) = plt.subplots(1, 2, figsize=(12, 4.6), gridspec_kw={"width_ratios": [1.2, 1]})
     draw_map(a1, img, pitch, offset, cmap, diverging, title, colorbar=False)
     if along == "X":                                  # a row at Y = pos
-        r = int(round(pos_mm / pitch)) - oy
+        r = cell_of(pos_mm, pitch) - oy
         if not 0 <= r < H:
             raise ValueError(f"Y = {pos_mm} mm is outside {oy * pitch:.1f}–{(oy + H) * pitch:.1f} mm")
         x = (np.arange(W) + ox + 0.5) * pitch
@@ -192,7 +208,7 @@ def profile_figure(img, pitch, offset, along, pos_mm, title, cmap, diverging):
         a2.plot(x, img[r], color=INK, lw=1.3)
         a2.set_xlabel("X (mm)")
     else:                                             # a column at X = pos
-        c = int(round(pos_mm / pitch)) - ox
+        c = cell_of(pos_mm, pitch) - ox
         if not 0 <= c < W:
             raise ValueError(f"X = {pos_mm} mm is outside {ox * pitch:.1f}–{(ox + W) * pitch:.1f} mm")
         y = (np.arange(H) + oy + 0.5) * pitch
@@ -213,7 +229,7 @@ def surface(img, pitch, offset=(0, 0), cmap="magma", diverging=False, title="", 
     pixels) are traced on the surface."""
     H, W = img.shape
     ox, oy = offset
-    lo, hi = _limits(img, diverging, limits)
+    lo, hi = color_limits(img, diverging, limits)
     z = np.clip(np.nan_to_num(np.asarray(img, dtype=float), nan=lo), lo, hi)
     X, Y = np.meshgrid((np.arange(W) + ox + 0.5) * pitch, (np.arange(H) + oy + 0.5) * pitch)
     fig = plt.figure(figsize=(8.6, 6.4))
@@ -304,20 +320,32 @@ def steps(rs, pitch, st, boxes, box_note="", suptitle=None):
     return png(fig, dpi=110)
 
 
+def measure_window(shape, offset, box, pad=6):
+    """(x0, y0, x1, y1) of a box plus a margin, in pixels of the map."""
+    H, W = shape
+    ox, oy = offset
+    return (max(0, box["x0"] - ox - pad), max(0, box["y0"] - oy - pad),
+            min(W, box["x1"] - ox + pad), min(H, box["y1"] - oy + pad))
+
+
+def measure_lines(m):
+    """The measured length and width axes in mm: [{pts, color, label}]."""
+    if not m:
+        return []
+    return [{"pts": m["length_ends"], "color": "#22d3ee" if m["reliable"] else "#ffa940",
+             "label": f"length {m['length_mm']} mm"},
+            {"pts": m["width_ends"], "color": "#ffa940", "label": f"width {m['width_mm']} mm"}]
+
+
 def measure_figure(img, pitch, offset, box, m, title):
     """Zoom on one box with the measured length (cyan) and width (orange) axes."""
     ox, oy = offset
-    pad = 6
-    H, W = img.shape
-    x0, y0 = max(0, box["x0"] - ox - pad), max(0, box["y0"] - oy - pad)
-    x1, y1 = min(W, box["x1"] - ox + pad), min(H, box["y1"] - oy + pad)
+    x0, y0, x1, y1 = measure_window(img.shape, offset, box)
     sub = img[y0:y1, x0:x1]
     fig, ax = plt.subplots(figsize=(5.5, 5.5 * sub.shape[0] / sub.shape[1] + 0.8))
     draw_map(ax, sub, pitch, (x0 + ox, y0 + oy), "magma", False, title)
     draw_boxes(ax, [box], pitch, numbered=False)
-    if m:
-        col = "#22d3ee" if m["reliable"] else "#ffa940"
-        (a, b), (c, d) = m["length_ends"], m["width_ends"]
-        ax.plot([a[0], b[0]], [a[1], b[1]], color=col, lw=2.2)
-        ax.plot([c[0], d[0]], [c[1], d[1]], color="#ffa940", lw=2.2)
+    for ln in measure_lines(m):
+        a, b = ln["pts"]
+        ax.plot([a[0], b[0]], [a[1], b[1]], color=ln["color"], lw=2.2)
     return png(fig)

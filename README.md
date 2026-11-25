@@ -97,6 +97,22 @@ writes to `data/` and `results/labels/`, and a hook runs the smoke test after ev
 backend: the answer text streams in, an activity line says "Thinking…" or "Working…" (with the
 elapsed time) while the assistant is busy, each tool shows its status, figures appear on the right,
 "Open original" opens the image in the Windows image viewer, "Save image" opens a save dialog.
+
+**The figures are interactive** (`app/frontend/viewer.js`, no library, works offline). They are
+drawn from the measured grids, not from a picture:
+
+| | |
+|---|---|
+| Hover | X, Y in mm, scan point (col, row), the mapped value, raw, filtered and z at that point, and the crack under the pointer (confidence, centre, size, label match) |
+| Click | Pin the point: a table of coordinates and values, distance to the previous pin, Copy (for Excel) |
+| Drag, wheel | Move and zoom the map; "Smooth" off shows one cell per measured point |
+| 3D | Any map as a surface: drag to rotate, Shift+drag to move, wheel to zoom, Top / Front / Side, height; hover and pins work there too |
+| Profile | Values along X or Y through the map; drag the cut |
+| Several maps | Linked crosshair and zoom: one hover reads every map at that place; ⤢ enlarges one |
+| Image | The still picture; "Save image" in 2D/3D saves the view as shown |
+
+Keyboard on a map: arrows move the point (Shift = 10 points; in 3D, Shift+arrows rotate), Enter pins,
++ / - zoom, 0 resets. Custom plots from `run_python` stay pictures, except maps shown with `show_map`.
 The AI Studio version's "simulation" (fake images and invented numbers when offline) was removed:
 every figure and number comes from the real tools.
 
@@ -120,7 +136,7 @@ app/backend/agent/    the assistant: tools, hooks, memory, chat session, system 
 app/agent_home/       the assistant's CLAUDE.md + skills
 app/backend/server.py FastAPI backend (runs hidden inside the program)
 app/desktop.py        the desktop program: WebView2 window + backend start-up
-app/frontend/         the UI (Google AI Studio design, connected to the backend)
+app/frontend/         the UI (Google AI Studio design, connected to the backend) + the interactive viewer
 app/assets/           icon, shortcut script
 app/state/            images, memory, logs at run time (not in git)
 app/tools/           developer scripts: export_onnx.py, benchmark.py

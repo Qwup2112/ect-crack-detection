@@ -82,6 +82,12 @@ def run(code, session_id, chat_state, timeout=TIMEOUT_S):
     return out, figs, time.time() - t0, timed_out
 
 
+def figure_data(work, fig):
+    """The interactive data a figure of the child came with (show_map), or None."""
+    f = work / fig["data"] if fig.get("data") else None
+    return json.loads(f.read_text(encoding="utf-8")) if f is not None and f.exists() else None
+
+
 # ---------------------------------------------------------------- child side
 
 WRITE_FLAGS = os.O_WRONLY | os.O_RDWR | os.O_APPEND | os.O_CREAT | os.O_TRUNC
@@ -135,7 +141,7 @@ def main():
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
-    from app.backend.ect import detect, process, render, scan as sc
+    from app.backend.ect import detect, interactive, process, render, scan as sc
 
     chat = json.loads(Path(state_file).read_text(encoding="utf-8"))
     figures = []
@@ -154,6 +160,11 @@ def main():
         if crop is None:
             crop = (chat.get("crop") or {}).get(meta["id"], "auto")
         return process.pipeline(grid, crop=crop)
+
+    def point(scan, x_mm, y_mm, crop=None):
+        """Values at a position, the same as the user reads on the map: {col, row, x_mm, y_mm, raw,
+        filtered, detrended, dx, z} of the scan point that covers it."""
+        return interactive.point(stages(scan, crop), load(scan)[1]["pitch_mm"], x_mm, y_mm)
 
     def yolo(scan, conf=detect.YOLO_CONF):
         """YOLO boxes [{x0,y0,x1,y1,conf}] in original grid px (onnxruntime)."""
@@ -175,13 +186,34 @@ def main():
         name = f"fig_{time.strftime('%H%M%S')}_{len(figures) + 1}.png"
         fig.savefig(Path(work) / name, dpi=130, bbox_inches="tight")
         plt.close(fig)
-        figures.append({"file": name, "title": title or f"Figure {len(figures) + 1}", "caption": caption})
+        add_figure({"file": name, "title": title or f"Figure {len(figures) + 1}", "caption": caption})
+
+    def show_map(values, pitch=1.0, offset=(0, 0), title="", cmap="magma", diverging=False, label="",
+                 boxes=None, plot="2d", caption=""):
+        """Put a 2D array (rows = Y, columns = X) on the right-hand panel as an interactive map:
+        the user reads every point, zooms, switches 2D/3D and rotates it."""
+        values = np.asarray(values, dtype=float)
+        if values.ndim != 2 or min(values.shape) < 2:
+            raise ValueError(f"show_map needs a 2D array, got shape {values.shape}")
+        title = title or f"Map {len(figures) + 1}"
+        draw = render.surface if plot == "3d" else render.single
+        stem = f"map_{time.strftime('%H%M%S')}_{len(figures) + 1}"
+        (Path(work) / f"{stem}.png").write_bytes(draw(values, pitch, offset, cmap=cmap, diverging=diverging,
+                                                      title=title, boxes=boxes,
+                                                      **{"zlabel" if plot == "3d" else "cbar_label": label}))
+        panel = interactive.map_panel(values, pitch, offset, title, cmap, diverging, label, boxes=boxes, name="value")
+        (Path(work) / f"{stem}.data").write_text(
+            json.dumps(interactive.figure([panel], caption, mode="3d" if plot == "3d" else "2d")), encoding="utf-8")
+        add_figure({"file": f"{stem}.png", "data": f"{stem}.data", "title": title, "caption": caption})
+
+    def add_figure(item):
+        figures.append(item)
         fig_file.write_text(json.dumps(figures, ensure_ascii=False), encoding="utf-8")
 
     ns = {"np": np, "scipy": scipy, "ndimage": ndimage, "signal": signal, "stats": stats, "plt": plt,
           "sc": sc, "process": process, "detect": detect, "render": render, "chat": chat,
-          "load": load, "stages": stages, "yolo": yolo, "threshold": threshold, "labels": labels,
-          "catalog": catalog, "show": show, "WORK": Path(work), "__name__": "__main__"}
+          "load": load, "stages": stages, "point": point, "yolo": yolo, "threshold": threshold, "labels": labels,
+          "catalog": catalog, "show": show, "show_map": show_map, "WORK": Path(work), "__name__": "__main__"}
     code = Path(code_file).read_text(encoding="utf-8")
     os.chdir(work)
     _install_guard(work)
