@@ -49,6 +49,10 @@ Claude agent answers in English and its tools draw the figures. The previous Tki
 - Smoke test: `.venv/Scripts/python -m app.tests.smoke_ect [--yolo]`. A PostToolUse hook runs it
   after every edit under `app/backend/ect/`; fix a failure before moving on.
 - Expected values: cambien_4lop_2 R 1.7 V 300 kHz -> z_top5 10.35; P 0.3 V 20 kHz 145x95 -> 9.17.
+- Lint: `pylint app`, settings in `.pylintrc` (errors fail, the rest is reported; scripts/ is not
+  linted). GitHub Actions runs it on every push (.github/workflows/pylint.yml, Python 3.14, the
+  requirements minus ultralytics/onnx). pylint is not in .venv; locally:
+  `PYTHONPATH=D:/Claude/ect-pylint/lib .venv/Scripts/python -m pylint app`.
 
 ## Rules
 
