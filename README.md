@@ -64,7 +64,7 @@ lag fix), denoising (none / median / Gaussian / FIR / FIR + median), border crop
 auto at three thresholds), step order and background removal, detection (YOLO at three
 confidences, the threshold detector at three z) and 2D vs 3D drawing. It writes
 `results/benchmark/REPORT.md`, `benchmark.json`, one CSV per step and the figures. Main results
-(2026-10-28): the auto crop doubles threshold-detector F1 (0.20 to 0.41) without cutting a labelled
+(2026-11-25): the auto crop doubles threshold-detector F1 (0.20 to 0.41) without cutting a labelled
 crack; the 8 px Gaussian background removal beats row/column medians (0.41 vs 0.13-0.29); the
 column FIR removes ~80% of the zig-zag and keeps 91-96% of the crack peak; YOLO finds 825/825
 labelled cracks, but it was trained on those scans.

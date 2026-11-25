@@ -38,7 +38,7 @@ signal, 15 labelled cracks).
 2. **Build the grid.** The probe scans zig-zag: line 1 left→right, line 2 right→left, ... Cut
    into lines, every 2nd line is backwards, so cracks smear into a comb. Reverse those lines (the
    lab's `reshape_raster`). The probe also lags when it turns: shift the return lines by the lag
-   (searched in −5…+5 px) that minimises the row-to-row zig-zag, and match their level by medians.
+   (searched in −8…+8 px) that minimises the row-to-row zig-zag, and match their level by medians.
 3. **Filter (lpf).** Hamming-window FIR low-pass, order 24, cutoff 0.3 of Nyquist, run down
    every column (along Y, where the 2-line zig-zag lives), edges padded 50 points, group delay
    removed; then a 3×3 median for spikes. Along X only the median acts, so crack edges stay sharp.
@@ -63,7 +63,7 @@ signal, 15 labelled cracks).
 
 ## Benchmark evidence
 
-From `python -m app.tools.benchmark`, run 2026-10-28: 103 readable scans, 55 of them labelled
+From `python -m app.tools.benchmark`, run 2026-11-25: 103 readable scans, 55 of them labelled
 (cam_4lop_1 and cambien_4lop_2, 825 DRAFT-labelled cracks). Scores against labels: a box is found
 when it overlaps a label at IoU ≥ 0.3; "centre recall" counts a crack as seen when any box centre
 falls inside its labelled box.
@@ -71,10 +71,12 @@ falls inside its labelled box.
 **Grid** (zig-zag left, all scans, relative to the recorded order):
 recorded 100 % → every 2nd line reversed 26 % → + lag fix 12 %.
 - Lag found: cam_4lop_1 +2 px on 25 of 28 scans; cambien_4lop_2 mostly 0 or +2 px (−1…+2);
-  early_session spread from −5 to +5 px.
-- 20 early_session scans sit on the +5 px search limit. With a ±8 px search, 19 of them pick +6 px
-  and their zig-zag drops to a median 70 % (best 50 %) of the ±5 px result; no labelled scan
-  changes. The app still searches ±5 px: say so if the user asks about early_session quality.
+  early_session spread from −5 to +6 px, 19 of 43 scans at +6.
+- The search was ±5 px until 2026-11-25. With ±8 px, 19 early_session scans pick +6 px instead of
+  +5 and their zig-zag drops to a median 70 % (best 50 %) of the ±5 px result; no labelled scan
+  changes, and a ±12 px search changes nothing more. The picture gets cleaner, the crack scores do
+  not clearly: z_top5 of those scans goes up on 5 and down on 7 (by at most 0.17), YOLO finds the
+  same number of boxes on 14 and one more or less on 5.
 - The threshold detector cannot tell the grids apart on this coupon (F1 0.42 recorded vs 0.41
   aligned): the cracks sit in evenly spaced columns (x = 25, 50, 75, 100, 125 px on a 155 px
   grid), so a crack on a backwards line lands ~3 px from another crack column. Show the smear
@@ -124,7 +126,7 @@ Auto z > 3 scores best and cuts no labelled crack; z > 2 cuts 5. YOLO is not aff
 
 | detector | precision | recall | F1 | mean IoU | centre recall | ms/scan |
 |---|---|---|---|---|---|---|
-| YOLO conf 0.25 / 0.5 (default) / 0.7 | 1.00 | 1.00 | 1.00 | 0.90 | 1.00 | ~13 |
+| YOLO conf 0.25 / 0.5 (default) / 0.7 | 1.00 | 1.00 | 1.00 | 0.90 | 1.00 | ~12 |
 | threshold \|z\| > 2 | 0.49 | 0.27 | 0.35 | 0.56 | 0.45 | ~4 |
 | threshold \|z\| > 2.5 (fallback) | 0.60 | 0.31 | 0.41 | 0.57 | 0.46 | ~4 |
 | threshold \|z\| > 3 | 0.64 | 0.30 | 0.41 | 0.58 | 0.43 | ~4 |
@@ -136,7 +138,7 @@ a new plate. On the 48 unlabelled scans it gives a median 11 boxes per scan (max
 boxes cover only the strongest part of a signature, so they often miss the IoU 0.3 bar even when
 they sit on the crack.
 
-**2D vs 3D drawing** (median of 8 scans): 2D ~210–230 ms, 3D ~230–255 ms per figure, both
+**2D vs 3D drawing** (median of 8 scans): 2D ~190 ms, 3D ~215–230 ms per figure, both
 ~200 KB. Use them for different things:
 - 2D heatmap: exact positions, box edges, mm measurements - the default for analysis.
 - 3D surface (height and colour = value): shows at a glance how strong and how sharp each crack

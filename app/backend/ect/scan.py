@@ -57,9 +57,12 @@ def sawtooth(img, trim=12):
     return float(np.mean(np.abs(f[2:] - 2 * f[1:-1] + f[:-2])))
 
 
-def fix_scan_direction(grid, max_shift=5):
+MAX_LAG_PX = 8         # +-5 px was too short: 19 early_session scans need +6 (none reaches 8)
+
+
+def fix_scan_direction(grid, max_shift=MAX_LAG_PX):
     """Align the right-to-left lines with the left-to-right ones. The probe lags when it
-    reverses (cam_4lop_1: 2 px on 26/28 files) and return lines carry a level offset; the
+    reverses (cam_4lop_1: 2 px on 25/28 files) and return lines carry a level offset; the
     shift minimising the row-to-row zig-zag is kept and levels are matched by medians."""
     candidates = []
     for k in range(-max_shift, max_shift + 1):

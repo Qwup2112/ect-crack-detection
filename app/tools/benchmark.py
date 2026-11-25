@@ -40,8 +40,8 @@ INK, MUTED = render.INK, render.MUTED
 
 GRID_STEPS = [("recorded", "cut into lines (every 2nd backwards)"),
               ("unmirrored", "every 2nd line reversed"),
-              ("aligned", "+ lag fixed, search ±5 px (default)"),
-              ("aligned8", "+ lag fixed, search ±8 px")]
+              ("aligned5", "+ lag fixed, search ±5 px"),
+              ("aligned", "+ lag fixed, search ±8 px (default)")]
 FILTERS = [("none", "none", 3), ("median 3x3", "median", 3), ("Gaussian σ 1.5", "gaussian", 3),
            ("FIR down columns", "lpf", 1), ("FIR + median 3 (default)", "lpf", 3)]
 CROPS = [("none", "none", 3.0), ("fixed 5 px", 5, 3.0), ("fixed 10 px", 10, 3.0),
@@ -133,10 +133,12 @@ def bench_grid(items):
     rows, totals = [], {k: np.zeros(5) for k, _ in GRID_STEPS}
     for it in items:
         rs = dict(it["rs"])
-        rs["aligned8"], shift8, _ = sc.fix_scan_direction(rs["unmirrored"], max_shift=8)
+        rs["aligned5"], shift5, _ = sc.fix_scan_direction(rs["unmirrored"], max_shift=5)
+        wide = sc.fix_scan_direction(rs["unmirrored"], max_shift=12)[1]
         base = sc.sawtooth(rs["recorded"]) or 1.0
-        row = {"scan": it["id"], "session": it["session"], "lag_shift_px": rs["shift_px"], "lag_shift_px_8": shift8,
-               "zigzag_8_vs_5": round(sc.sawtooth(rs["aligned8"]) / (sc.sawtooth(rs["aligned"]) or 1.0), 4)}
+        row = {"scan": it["id"], "session": it["session"], "lag_shift_px": rs["shift_px"], "lag_shift_px_5": shift5,
+               "lag_shift_px_12": wide,
+               "zigzag_8_vs_5": round(sc.sawtooth(rs["aligned"]) / (sc.sawtooth(rs["aligned5"]) or 1.0), 4)}
         for k, _ in GRID_STEPS:
             row[f"zigzag_{k}"] = round(sc.sawtooth(rs[k]) / base, 4)
             if it["labelled"]:                                      # the rest of the default pipeline
@@ -158,10 +160,11 @@ def bench_grid(items):
             W = it["grid"].shape[1]
             mirror.append(float(np.median([np.abs(xs - (W - x)).min() for x in xs])))
             widths.append(float(np.median([b["x1"] - b["x0"] for b in it["labels"]])))
-    changed = [r for r in rows if r["lag_shift_px_8"] != r["lag_shift_px"]]
+    changed = [r for r in rows if r["lag_shift_px"] != r["lag_shift_px_5"]]
     wider = {"scans_changed": len(changed), "sessions": sorted({r["session"] for r in changed}),
              "labelled_changed": sum(r["scan"] in {it["id"] for it in items if it["labelled"]} for r in changed),
-             "new_shifts": sorted({r["lag_shift_px_8"] for r in changed}),
+             "new_shifts": sorted({r["lag_shift_px"] for r in changed}),
+             "changed_at_12": sum(r["lag_shift_px_12"] != r["lag_shift_px"] for r in rows),
              "zigzag_vs_5px_median": med([r["zigzag_8_vs_5"] for r in changed]),
              "zigzag_vs_5px_best": round(min((r["zigzag_8_vs_5"] for r in changed), default=1.0), 3)}
     return rows, {"variants": summary, "lag_shift_by_session": shifts, "wider_search": wider,
@@ -574,12 +577,13 @@ def write_report(res):
         "px wide) and still falls inside a box. On a plate with an irregular layout the recorded order would put "
         "the signal in the wrong place; the step-by-step figure (panels 3 and 4) shows the smear.",
         "",
-        f"Search limit: with ±8 px instead of the app's ±5 px, {g['wider_search']['scans_changed']} scans pick another "
+        f"Search limit: with the app's ±8 px instead of ±5 px, {g['wider_search']['scans_changed']} scans pick another "
         f"shift ({', '.join(g['wider_search']['sessions']) or 'none'}; new shift "
         f"{', '.join(f'{s:+d}' for s in g['wider_search']['new_shifts']) or '-'} px; "
         f"{g['wider_search']['labelled_changed']} of them labelled) and their zig-zag drops to a median "
         f"{pct(g['wider_search']['zigzag_vs_5px_median'])} (best {pct(g['wider_search']['zigzag_vs_5px_best'])}) of the "
-        "±5 px result: those scans hit the ±5 px limit, their real lag is larger.",
+        "±5 px result: their real lag is larger than 5 px. A still wider ±12 px search changes "
+        f"{g['wider_search']['changed_at_12']} scans, so ±8 px is wide enough.",
         "",
         "![grid](figures/A_grid.png)",
         "",
@@ -697,11 +701,11 @@ def write_report(res):
                      f"fallback reaches F1 {thr['by_session']['all']['f1']:.2f}.")
     bg = pl["background_removal"]
     lines += [
-        f"- Grid: reversing every 2nd line + the lag fix leaves {pct(g['variants'][2]['zigzag_vs_recorded'])} of the "
+        f"- Grid: reversing every 2nd line + the lag fix leaves {pct(g['variants'][3]['zigzag_vs_recorded'])} of the "
         f"recorded zig-zag (threshold F1 {num(g['variants'][0]['threshold']['f1'])} -> "
-        f"{num(g['variants'][2]['threshold']['f1'])}: the evenly spaced crack columns hide the difference from "
-        "the detector). A ±8 px lag search would improve "
-        f"{g['wider_search']['scans_changed']} unlabelled scans and change no labelled one.",
+        f"{num(g['variants'][3]['threshold']['f1'])}: the evenly spaced crack columns hide the difference from "
+        f"the detector). The ±8 px lag search (±5 px before) improves {g['wider_search']['scans_changed']} scans, "
+        f"{g['wider_search']['labelled_changed']} of them labelled.",
         f"- Denoising: the default lpf removes {pct(1 - dn[-1]['zigzag_left'])} of the remaining zig-zag and keeps "
         f"{pct(dn[-1]['peak_kept'])} of the crack peak (Gaussian: {pct(dn[2]['peak_kept'])}); threshold F1 "
         f"{num(dn[-1]['threshold']['f1'])} vs {num(dn[0]['threshold']['f1'])} unfiltered.",

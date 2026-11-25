@@ -26,7 +26,7 @@ Start with `detrend`; go to `strong` only if cracks are still faint. Show before
 Every view except `raw` goes through the lab's anti-sawtooth method (scripts/dataloader.py,
 as used in plot_all_1Hall_heatmaps.py):
 1. `reshape_raster`: odd scan lines reversed (the scanner runs back and forth);
-2. the return lines aligned with the forward lines (probe lag, 1-5 px) and level-matched;
+2. the return lines aligned with the forward lines (probe lag, up to 6 px) and level-matched;
 3. `LPF`: Hamming FIR low-pass, order 24, padded 50 samples, group delay removed - applied
    down every column (Y, where the sawtooth lives), then a 3 px median;
 4. drawn with bilinear interpolation.
